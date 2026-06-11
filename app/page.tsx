@@ -19,7 +19,7 @@ interface MonthlyRow {
   الشهر: string
   'أيام الدوام': number
   روتيشن: number
-  ايام الجمعه: number
+ 'ايام الجمعه': number
   'عدد ايام الغياب': number
   'إجازة مرضية': number
   'إجازة طارئة': number
