@@ -7,18 +7,52 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlkc2Vkcm51b3BmbHplcGFzbXZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4Mzg2NDQsImV4cCI6MjA5NjQxNDY0NH0.KXxBQzHEkRJNrEL22T-Om_mO1Va_y5zN7sZ4kNXrwqQ'
 )
 
-export default function Finance({ readOnly = false }) {
-  const [funds, setFunds] = useState([])
-  const [expenses, setExpenses] = useState([])
-  const [selectedFund, setSelectedFund] = useState(null)
-  const [view, setView] = useState('funds')
+interface Fund {
+  id: string
+  المصدر: string
+  'تاريخ الاستلام': string
+  'المبلغ المستلم': number
+  'إجمالي المصروف': number
+  المتبقي: number
+  ملاحظات: string
+}
+
+interface Expense {
+  id: string
+  description: string
+  amount: number
+  expense_type: string
+  expense_date: string
+  notes: string
+}
+
+interface FundForm {
+  source: string
+  amount: string
+  received_date: string
+  notes: string
+}
+
+interface ExpenseForm {
+  description: string
+  amount: string
+  expense_type: string
+  expense_date: string
+  notes: string
+}
+
+export default function Finance({ readOnly = false }: { readOnly?: boolean }) {
+  const [funds, setFunds] = useState<Fund[]>([])
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [selectedFund, setSelectedFund] = useState<Fund | null>(null)
+  const [view, setView] = useState<'funds' | 'expenses'>('funds')
   const [showFundForm, setShowFundForm] = useState(false)
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [todayStr, setTodayStr] = useState('')
 
-  const [fundForm, setFundForm] = useState({ source: '', amount: '', received_date: '', notes: '' })
-  const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', expense_type: '', expense_date: '', notes: '' })
+  const [fundForm, setFundForm] = useState<FundForm>({ source: '', amount: '', received_date: '', notes: '' })
+  const [expenseForm, setExpenseForm] = useState<ExpenseForm>({ description: '', amount: '', expense_type: '', expense_date: '', notes: '' })
 
   useEffect(() => {
     const t = new Date().toISOString().split('T')[0]
@@ -31,14 +65,14 @@ export default function Finance({ readOnly = false }) {
   async function loadFunds() {
     setLoading(true)
     const { data } = await supabase.from('funds_summary').select('*')
-    setFunds(data || [])
+    setFunds((data as Fund[]) || [])
     setLoading(false)
   }
 
-  async function loadExpenses(fundId) {
+  async function loadExpenses(fundId: string) {
     setLoading(true)
     const { data } = await supabase.from('expenses').select('*').eq('fund_id', fundId).order('expense_date', { ascending: false })
-    setExpenses(data || [])
+    setExpenses((data as Expense[]) || [])
     setLoading(false)
   }
 
@@ -62,6 +96,7 @@ export default function Finance({ readOnly = false }) {
 
   async function saveExpense() {
     if (!expenseForm.description || !expenseForm.amount || !expenseForm.expense_type) { alert('يرجى تعبئة جميع الحقول المطلوبة'); return }
+    if (!selectedFund) return
     setLoading(true)
     const { error } = await supabase.from('expenses').insert([{
       fund_id: selectedFund.id,
@@ -81,31 +116,31 @@ export default function Finance({ readOnly = false }) {
     setLoading(false)
   }
 
-  async function deleteFund(id) {
+  async function deleteFund(id: string) {
     if (!confirm('هل أنت متأكد؟ سيتم حذف جميع المصاريف المرتبطة!')) return
     await supabase.from('funds').delete().eq('id', id)
     loadFunds()
   }
 
-  async function deleteExpense(id) {
+  async function deleteExpense(id: string) {
     if (!confirm('هل أنت متأكد من حذف هذا المصروف؟')) return
+    if (!selectedFund) return
     await supabase.from('expenses').delete().eq('id', id)
     loadExpenses(selectedFund.id)
     loadFunds()
   }
 
-  function openFundExpenses(fund) {
+  function openFundExpenses(fund: Fund) {
     setSelectedFund(fund)
     loadExpenses(fund.id)
     setView('expenses')
   }
 
-  const formatAmount = (n) => Number(n).toLocaleString('ar-IQ') + ' د.ع'
+  const formatAmount = (n: number) => Number(n).toLocaleString('ar-IQ') + ' د.ع'
 
   return (
     <div style={{margin:'24px',background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
 
-      {/* رأس البطاقة */}
       <div style={{padding:'16px 20px',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,background:'#f9fafb'}}>
         <div style={{display:'flex',alignItems:'center',gap:12}}>
           {view === 'expenses' && (
@@ -127,7 +162,6 @@ export default function Finance({ readOnly = false }) {
         )}
       </div>
 
-      {/* نموذج إضافة مبلغ */}
       {!readOnly && view === 'funds' && showFundForm && (
         <div style={{padding:'20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,maxWidth:600}}>
@@ -159,7 +193,6 @@ export default function Finance({ readOnly = false }) {
         </div>
       )}
 
-      {/* نموذج إضافة مصروف */}
       {!readOnly && view === 'expenses' && showExpenseForm && (
         <div style={{padding:'20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,maxWidth:600}}>
@@ -199,7 +232,6 @@ export default function Finance({ readOnly = false }) {
         </div>
       )}
 
-      {/* بطاقات الملخص */}
       {view === 'expenses' && selectedFund && (
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,padding:'16px 20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
           <div style={{background:'#dbeafe',borderRadius:10,padding:'14px 16px'}}>
@@ -217,7 +249,6 @@ export default function Finance({ readOnly = false }) {
         </div>
       )}
 
-      {/* الجداول */}
       {loading ? (
         <div style={{textAlign:'center',padding:'3rem',color:'#6b7280',fontSize:14}}>جارٍ تحميل البيانات...</div>
       ) : view === 'funds' ? (
