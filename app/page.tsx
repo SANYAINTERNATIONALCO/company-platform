@@ -8,12 +8,32 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlkc2Vkcm51b3BmbHplcGFzbXZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4Mzg2NDQsImV4cCI6MjA5NjQxNDY0NH0.KXxBQzHEkRJNrEL22T-Om_mO1Va_y5zN7sZ4kNXrwqQ'
 )
 
-const formatDate = (dateStr) => {
+interface Employee {
+  id: string
+  name: string
+  job_title: string
+}
+
+interface MonthlyRow {
+  الاسم: string
+  الشهر: string
+  'أيام الدوام': number
+  روتيشن: number
+  ايام الجمعه: number
+  'عدد ايام الغياب': number
+  'إجازة مرضية': number
+  'إجازة طارئة': number
+  'إجازة اعتيادية': number
+  'عطلة رسمية': number
+  'مجموع الايام': number
+}
+
+const formatDate = (dateStr: string): string => {
   const d = new Date(dateStr)
   return d.toLocaleDateString('ar-IQ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 }
 
-const monthLabel = (m) => {
+const monthLabel = (m: string): string => {
   const [year, month] = m.split('-')
   const names = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
   return names[parseInt(month) - 1] + ' ' + year
@@ -24,15 +44,15 @@ export default function Home() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [user, setUser] = useState(null)
-  const [userRole, setUserRole] = useState(null)
+  const [user, setUser] = useState<{ id: string } | null>(null)
+  const [userRole, setUserRole] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState('attendance')
   const [viewMode, setViewMode] = useState('daily')
-  const [employees, setEmployees] = useState([])
-  const [statuses, setStatuses] = useState({})
-  const [savedToday, setSavedToday] = useState({})
-  const [monthlySummaryList, setMonthlySummaryList] = useState([])
-  const [availableMonths, setAvailableMonths] = useState([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [statuses, setStatuses] = useState<Record<string, string>>({})
+  const [savedToday, setSavedToday] = useState<Record<string, string>>({})
+  const [monthlySummaryList, setMonthlySummaryList] = useState<MonthlyRow[]>([])
+  const [availableMonths, setAvailableMonths] = useState<string[]>([])
   const [selectedMonth, setSelectedMonth] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
   const [saving, setSaving] = useState(false)
@@ -78,6 +98,7 @@ export default function Home() {
   }
 
   async function loadRole() {
+    if (!user) return
     const { data } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single()
     if (data) setUserRole(data.role)
     else setUserRole('viewer')
@@ -85,16 +106,16 @@ export default function Home() {
 
   async function loadEmployees() {
     const { data } = await supabase.from('employees').select('*').order('name')
-    setEmployees(data || [])
+    setEmployees((data as Employee[]) || [])
     const t = new Date().toISOString().split('T')[0]
     setSelectedDate(t)
   }
 
-  async function loadExistingRecords(date) {
+  async function loadExistingRecords(date: string) {
     const { data } = await supabase.from('attendance_records').select('*').eq('record_date', date)
-    const existing = {}
-    const saved = {}
-    if (data) { data.forEach(r => { existing[r.employee_id] = r.status; saved[r.employee_id] = r.status }) }
+    const existing: Record<string, string> = {}
+    const saved: Record<string, string> = {}
+    if (data) { data.forEach((r: { employee_id: string; status: string }) => { existing[r.employee_id] = r.status; saved[r.employee_id] = r.status }) }
     setStatuses(existing)
     setSavedToday(saved)
   }
@@ -102,16 +123,16 @@ export default function Home() {
   async function loadAvailableMonths() {
     const { data } = await supabase.from('attendance_records').select('record_date').order('record_date', { ascending: false })
     if (data) {
-      const months = [...new Set(data.map(r => r.record_date.slice(0, 7)))]
+      const months = [...new Set((data as { record_date: string }[]).map(r => r.record_date.slice(0, 7)))]
       setAvailableMonths(months)
       if (months.length > 0 && !selectedMonth) setSelectedMonth(months[0])
     }
   }
 
-  async function loadMonthlySummary(month) {
+  async function loadMonthlySummary(month: string) {
     setLoading(true)
     const { data } = await supabase.from('monthly_attendance_summary').select('*').eq('الشهر', month)
-    setMonthlySummaryList(data || [])
+    setMonthlySummaryList((data as MonthlyRow[]) || [])
     setLoading(false)
   }
 
@@ -126,12 +147,12 @@ export default function Home() {
       if (error) { alert('خطأ في حفظ ' + emp.name + ': ' + error.message); setSaving(false); return }
     }
     await loadExistingRecords(selectedDate)
-await loadAvailableMonths()
-setSaving(false)
-alert('تم حفظ ' + unsaved.length + ' سجل بنجاح ✓')
+    await loadAvailableMonths()
+    setSaving(false)
+    alert('تم حفظ ' + unsaved.length + ' سجل بنجاح ✓')
   }
 
-  const statusColor = (s) => {
+  const statusColor = (s: string) => {
     if (!s) return { background: '#f3f4f6', color: '#9ca3af' }
     if (['حاضر', 'روتيشن'].includes(s)) return { background: '#dcfce7', color: '#15803d' }
     if (s === 'يوم جمعة') return { background: '#dbeafe', color: '#1d4ed8' }
@@ -141,9 +162,9 @@ alert('تم حفظ ' + unsaved.length + ' سجل بنجاح ✓')
 
   const unsavedCount = employees.filter(emp => statuses[emp.id] && statuses[emp.id] !== savedToday[emp.id]).length
   const isReadOnly = userRole === 'admin'
-  const canSeeAttendance = ['editor', 'admin'].includes(userRole)
-  const canSeeFinance = ['editor', 'admin', 'accountant'].includes(userRole)
-  const roleLabel = { editor: '✏️ محرر', admin: '👁️ مدير', accountant: '💼 محاسب' }
+  const canSeeAttendance = ['editor', 'admin'].includes(userRole || '')
+  const canSeeFinance = ['editor', 'admin', 'accountant'].includes(userRole || '')
+  const roleLabel: Record<string, string> = { editor: '✏️ محرر', admin: '👁️ مدير', accountant: '💼 محاسب' }
 
   const monthlyCols = ['الاسم','الشهر','أيام الدوام','روتيشن','ايام الجمعه','عدد ايام الغياب','إجازة مرضية','إجازة طارئة','إجازة اعتيادية','عطلة رسمية','مجموع الايام']
 
@@ -204,7 +225,7 @@ alert('تم حفظ ' + unsaved.length + ' سجل بنجاح ✓')
         </div>
         <div style={{display:'flex',alignItems:'center',gap:12}}>
           <span style={{fontSize:12,background:'rgba(255,255,255,0.2)',padding:'4px 10px',borderRadius:20,color:'#fff',fontWeight:600}}>
-            {roleLabel[userRole]}
+            {roleLabel[userRole] || userRole}
           </span>
           <button onClick={logout} style={{background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:8,padding:'6px 16px',cursor:'pointer',fontSize:13,color:'#fff'}}>خروج</button>
         </div>
