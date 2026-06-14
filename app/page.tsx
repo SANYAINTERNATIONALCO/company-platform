@@ -62,7 +62,9 @@ export default function Home() {
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #3b82f6 100%)',fontFamily:'system-ui',direction:'rtl'}}>
       <div style={{background:'#fff',borderRadius:20,padding:'2.5rem',width:380,boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
         <div style={{textAlign:'center',marginBottom:28}}>
-          <div style={{fontSize:52,marginBottom:10}}>🏢</div>
+          <img src="https://delivery.pixelbin.io/predictions/outputs/1d/sr/upscaleRestricted/019ec681-1e18-799f-8ece-f71fdf8350a7/result_0.png" 
+  alt="Sanya International Company" 
+  style={{width:180,height:180,objectFit:'contain',marginBottom:8}}/>
           <h1 style={{margin:'0 0 4px',fontSize:22,fontWeight:700,color:'#111827'}}>منصة الشركة</h1>
           <p style={{margin:0,color:'#6b7280',fontSize:14}}>Sanya International Company</p>
         </div>
