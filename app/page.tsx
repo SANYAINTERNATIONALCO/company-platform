@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import Finance from './components/Finance'
+import Visa from './components/Visa'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -204,6 +205,7 @@ export default function Home() {
   const isReadOnly = userRole === 'admin'
   const canSeeAttendance = ['editor', 'admin'].includes(userRole || '')
   const canSeeFinance = ['editor', 'admin', 'accountant'].includes(userRole || '')
+  const canSeeVisa = ['editor', 'admin'].includes(userRole || '')
   const roleLabel: Record<string, string> = { editor: '✏️ محرر', admin: '👁️ مدير', accountant: '💼 محاسب' }
   const monthlyCols = ['الاسم','الشهر','أيام الدوام','روتيشن','ايام الجمعه','عدد ايام الغياب','إجازة مرضية','إجازة طارئة','إجازة اعتيادية','عطلة رسمية','مجموع الايام']
 
@@ -260,6 +262,13 @@ export default function Home() {
                 💰 المصاريف
               </button>
             )}
+            {canSeeVisa && (
+              <button onClick={()=>setActiveSection('visa')}
+                style={{padding:'6px 16px',fontSize:13,border:'none',borderRadius:6,cursor:'pointer',fontWeight:600,
+                  background:activeSection==='visa'?'rgba(255,255,255,0.25)':'transparent',color:'#fff'}}>
+                🪪 التأشيرات
+              </button>
+            )}
           </div>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:12}}>
@@ -271,6 +280,7 @@ export default function Home() {
       </div>
 
       {activeSection === 'finance' && <Finance readOnly={isReadOnly} />}
+      {activeSection === 'visa' && <Visa readOnly={isReadOnly} />}
 
       {activeSection === 'attendance' && canSeeAttendance && (
         <div style={{margin:'24px',background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
@@ -394,7 +404,6 @@ export default function Home() {
             </div>
           ) : (
             <div>
-              {/* محتوى الطباعة المخفي */}
               <div ref={printRef} style={{display:'none'}}>
                 <div className="header">
                   <div className="company-name">Sanya International Company</div>
