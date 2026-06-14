@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import Finance from './components/Finance'
 
@@ -19,7 +19,7 @@ interface MonthlyRow {
   الشهر: string
   'أيام الدوام': number
   روتيشن: number
- 'ايام الجمعه': number
+  'ايام الجمعه': number
   'عدد ايام الغياب': number
   'إجازة مرضية': number
   'إجازة طارئة': number
@@ -56,10 +56,9 @@ export default function Home() {
   const [selectedMonth, setSelectedMonth] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
   const [saving, setSaving] = useState(false)
+  const printRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (user) loadRole()
-  }, [user])
+  useEffect(() => { if (user) loadRole() }, [user])
 
   useEffect(() => {
     if (userRole) {
@@ -152,6 +151,47 @@ export default function Home() {
     alert('تم حفظ ' + unsaved.length + ' سجل بنجاح ✓')
   }
 
+  function handlePrintMonthly() {
+    const printContent = printRef.current
+    if (!printContent) return
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="UTF-8">
+        <title>الموقف الشهري - ${monthLabel(selectedMonth)}</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; direction: rtl; color: #111; padding: 20px; }
+          .header { text-align: center; border-bottom: 3px solid #1e40af; padding-bottom: 16px; margin-bottom: 24px; }
+          .company-name { font-size: 22px; font-weight: bold; color: #1e40af; margin-bottom: 4px; }
+          .report-title { font-size: 16px; color: #374151; margin-bottom: 4px; }
+          .report-date { font-size: 13px; color: #6b7280; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th { background: #1e40af; color: #fff; padding: 9px 10px; text-align: center; font-weight: 600; white-space: nowrap; }
+          th:first-child { text-align: right; }
+          td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; text-align: center; }
+          td:first-child { text-align: right; font-weight: 600; }
+          tr:nth-child(even) { background: #f9fafb; }
+          .total-col { background: #eff6ff; font-weight: bold; color: #1e40af; }
+          .absent { color: #dc2626; font-weight: bold; }
+          .present { color: #15803d; font-weight: bold; }
+          .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ca3af; }
+          @media print { body { padding: 10px; } }
+        </style>
+      </head>
+      <body>
+        ${printContent.innerHTML}
+      </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => { printWindow.print(); printWindow.close() }, 500)
+  }
+
   const statusColor = (s: string) => {
     if (!s) return { background: '#f3f4f6', color: '#9ca3af' }
     if (['حاضر', 'روتيشن'].includes(s)) return { background: '#dcfce7', color: '#15803d' }
@@ -165,7 +205,6 @@ export default function Home() {
   const canSeeAttendance = ['editor', 'admin'].includes(userRole || '')
   const canSeeFinance = ['editor', 'admin', 'accountant'].includes(userRole || '')
   const roleLabel: Record<string, string> = { editor: '✏️ محرر', admin: '👁️ مدير', accountant: '💼 محاسب' }
-
   const monthlyCols = ['الاسم','الشهر','أيام الدوام','روتيشن','ايام الجمعه','عدد ايام الغياب','إجازة مرضية','إجازة طارئة','إجازة اعتيادية','عطلة رسمية','مجموع الايام']
 
   if (!user) return (
@@ -270,15 +309,25 @@ export default function Home() {
               </div>
             )}
 
-            {viewMode === 'monthly' && availableMonths.length > 0 && (
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <label style={{fontSize:13,fontWeight:600,color:'#374151'}}>الشهر:</label>
-                <select value={selectedMonth} onChange={e=>setSelectedMonth(e.target.value)}
-                  style={{padding:'7px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:13,color:'#111827',background:'#fff',fontWeight:500}}>
-                  {availableMonths.map(m=>(
-                    <option key={m} value={m}>{monthLabel(m)}</option>
-                  ))}
-                </select>
+            {viewMode === 'monthly' && (
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                {availableMonths.length > 0 && (
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <label style={{fontSize:13,fontWeight:600,color:'#374151'}}>الشهر:</label>
+                    <select value={selectedMonth} onChange={e=>setSelectedMonth(e.target.value)}
+                      style={{padding:'7px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:13,color:'#111827',background:'#fff',fontWeight:500}}>
+                      {availableMonths.map(m=>(
+                        <option key={m} value={m}>{monthLabel(m)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {monthlySummaryList.length > 0 && (
+                  <button onClick={handlePrintMonthly}
+                    style={{background:'#f3f4f6',color:'#374151',border:'1px solid #d1d5db',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                    🖨️ طباعة التقرير
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -345,6 +394,50 @@ export default function Home() {
             </div>
           ) : (
             <div>
+              {/* محتوى الطباعة المخفي */}
+              <div ref={printRef} style={{display:'none'}}>
+                <div className="header">
+                  <div className="company-name">Sanya International Company</div>
+                  <div className="report-title">الموقف الشهري — {monthLabel(selectedMonth)}</div>
+                  <div className="report-date">تاريخ الطباعة: {new Date().toLocaleDateString('ar-IQ')}</div>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>الاسم</th>
+                      <th>أيام الدوام</th>
+                      <th>روتيشن</th>
+                      <th>أيام الجمعة</th>
+                      <th>الغياب</th>
+                      <th>مرضية</th>
+                      <th>طارئة</th>
+                      <th>اعتيادية</th>
+                      <th>عطلة رسمية</th>
+                      <th>المجموع</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthlySummaryList.map((row, idx) => (
+                      <tr key={idx}>
+                        <td>{row['الاسم']}</td>
+                        <td className="present">{row['أيام الدوام']}</td>
+                        <td>{row['روتيشن']}</td>
+                        <td>{row['ايام الجمعه']}</td>
+                        <td className="absent">{row['عدد ايام الغياب']}</td>
+                        <td>{row['إجازة مرضية']}</td>
+                        <td>{row['إجازة طارئة']}</td>
+                        <td>{row['إجازة اعتيادية']}</td>
+                        <td>{row['عطلة رسمية']}</td>
+                        <td className="total-col">{row['مجموع الايام']}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="footer">
+                  تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — {new Date().toLocaleDateString('ar-IQ')}
+                </div>
+              </div>
+
               {availableMonths.length === 0 ? (
                 <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>لا توجد بيانات بعد</div>
               ) : loading ? (
