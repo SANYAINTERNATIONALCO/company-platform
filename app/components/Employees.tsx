@@ -129,7 +129,8 @@ export default function Employees({ readOnly = false }: { readOnly?: boolean }) 
     const file = e.target.files?.[0]
     if (!file || !selectedEmployee) return
     setUploading(fileType)
-    const fileName = `${selectedEmployee.id}_${fileType}_${Date.now()}_${file.name}`
+    const fileExt = file.name.split('.').pop()
+const fileName = `${selectedEmployee.id}_${fileType}_${Date.now()}.${fileExt}`
     const { data, error } = await supabase.storage.from('employee-files').upload(fileName, file)
     if (error) {
       alert('خطأ في رفع الملف: ' + error.message)
