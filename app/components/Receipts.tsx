@@ -175,7 +175,7 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
     return data as string
   }
 
-  async function saveFuelReceipt() {
+  async function saveFuelReceipt(shouldPrint: boolean) {
     if (!fuelForm.driver_name || !fuelForm.receiver_name || !fuelForm.vehicle_number || !fuelForm.product_type || !fuelForm.quantity || !fuelForm.amount) {
       alert('يرجى تعبئة جميع الحقول المطلوبة'); return
     }
@@ -198,12 +198,12 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
       setFuelForm({ ...fuelForm, driver_name:'', receiver_name:'', vehicle_number:'', product_type:'', quantity:'', amount:'' })
       setShowForm(false)
       loadAllReceipts()
-      setTimeout(()=>printReceipt({ type: 'fuel', ...data }), 300)
+      if (shouldPrint) setTimeout(()=>printReceipt({ type: 'fuel', ...data }), 300)
     }
     setLoading(false)
   }
 
-  async function saveMaintenanceReceipt() {
+  async function saveMaintenanceReceipt(shouldPrint: boolean) {
     if (!maintForm.vehicle_type || !maintForm.vehicle_number || !maintForm.odometer_reading || !maintForm.owner_name || !maintForm.maintenance_type || !maintForm.workshop_name || !maintForm.amount) {
       alert('يرجى تعبئة جميع الحقول المطلوبة'); return
     }
@@ -227,12 +227,12 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
       setMaintForm({ ...maintForm, vehicle_type:'', vehicle_number:'', odometer_reading:'', owner_name:'', maintenance_type:'', workshop_name:'', amount:'' })
       setShowForm(false)
       loadAllReceipts()
-      setTimeout(()=>printReceipt({ type: 'maintenance', ...data }), 300)
+      if (shouldPrint) setTimeout(()=>printReceipt({ type: 'maintenance', ...data }), 300)
     }
     setLoading(false)
   }
 
-  async function saveDeliveryReceipt() {
+  async function saveDeliveryReceipt(shouldPrint: boolean) {
     if (!deliveryForm.receiver_name || !deliveryForm.id_number || !deliveryForm.amount) {
       alert('يرجى تعبئة جميع الحقول المطلوبة'); return
     }
@@ -256,7 +256,7 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
       setDeliveryForm({ ...deliveryForm, receiver_name:'', id_number:'', amount:'', details:'' })
       setShowForm(false)
       loadAllReceipts()
-      setTimeout(()=>printReceipt({ type: 'delivery', ...data }), 300)
+      if (shouldPrint) setTimeout(()=>printReceipt({ type: 'delivery', ...data }), 300)
     }
     setLoading(false)
   }
@@ -461,10 +461,16 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
               <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>المبلغ (د.ع) *</label>
                 <input type="number" value={fuelForm.amount} onChange={e=>setFuelForm({...fuelForm,amount:e.target.value})} style={inputStyle}/></div>
             </div>
-            <button onClick={saveFuelReceipt} disabled={loading}
-              style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
-              {loading ? 'جارٍ الحفظ...' : 'حفظ وطباعة الوصل'}
-            </button>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>saveFuelReceipt(false)} disabled={loading}
+                style={{background:'#fff',color:'#16a34a',border:'2px solid #16a34a',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                {loading ? 'جارٍ الحفظ...' : 'حفظ'}
+              </button>
+              <button onClick={()=>saveFuelReceipt(true)} disabled={loading}
+                style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                {loading ? 'جارٍ الحفظ...' : 'حفظ وطباعة الوصل'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -495,10 +501,16 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
               <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>المبلغ (د.ع) *</label>
                 <input type="number" value={maintForm.amount} onChange={e=>setMaintForm({...maintForm,amount:e.target.value})} style={inputStyle}/></div>
             </div>
-            <button onClick={saveMaintenanceReceipt} disabled={loading}
-              style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
-              {loading ? 'جارٍ الحفظ...' : 'حفظ وطباعة الوصل'}
-            </button>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>saveMaintenanceReceipt(false)} disabled={loading}
+                style={{background:'#fff',color:'#16a34a',border:'2px solid #16a34a',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                {loading ? 'جارٍ الحفظ...' : 'حفظ'}
+              </button>
+              <button onClick={()=>saveMaintenanceReceipt(true)} disabled={loading}
+                style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                {loading ? 'جارٍ الحفظ...' : 'حفظ وطباعة الوصل'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -526,10 +538,16 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
               <div style={{gridColumn:'span 2'}}><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تفاصيل المبلغ</label>
                 <input value={deliveryForm.details} onChange={e=>setDeliveryForm({...deliveryForm,details:e.target.value})} placeholder="سبب التسليم..." style={inputStyle}/></div>
             </div>
-            <button onClick={saveDeliveryReceipt} disabled={loading}
-              style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
-              {loading ? 'جارٍ الحفظ...' : 'حفظ وطباعة الوصل'}
-            </button>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>saveDeliveryReceipt(false)} disabled={loading}
+                style={{background:'#fff',color:'#16a34a',border:'2px solid #16a34a',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                {loading ? 'جارٍ الحفظ...' : 'حفظ'}
+              </button>
+              <button onClick={()=>saveDeliveryReceipt(true)} disabled={loading}
+                style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                {loading ? 'جارٍ الحفظ...' : 'حفظ وطباعة الوصل'}
+              </button>
+            </div>
           </div>
         )}
       </div>
