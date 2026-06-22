@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import * as XLSX from 'xlsx'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -302,6 +303,31 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
     setTimeout(() => { printWindow.print(); printWindow.close() }, 500)
   }
 
+  function handleExportExcel() {
+    const rows = filteredMonthlySummary.map(row => ({
+      'الاسم': row['الاسم'],
+      'الشهر': monthLabel(row['الشهر']),
+      'أيام الدوام': row['أيام الدوام'],
+      'روتيشن': row['روتيشن'],
+      'أيام الجمعة': row['ايام الجمعه'],
+      'الغياب': row['عدد ايام الغياب'],
+      'إجازة مرضية': row['إجازة مرضية'],
+      'إجازة طارئة': row['إجازة طارئة'],
+      'إجازة اعتيادية': row['إجازة اعتيادية'],
+      'عطلة رسمية': row['عطلة رسمية'],
+      'مجموع الأيام': row['مجموع الايام'],
+    }))
+    const worksheet = XLSX.utils.json_to_sheet(rows)
+    worksheet['!cols'] = [
+      { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 12 },
+      { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }
+    ]
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'الموقف الشهري')
+    const monthsPart = selectedMonths.map(monthLabel).join('-')
+    XLSX.writeFile(workbook, `الموقف الشهري - ${monthsPart}.xlsx`)
+  }
+
   const statusColor = (s: string) => {
     if (!s) return { background: '#f3f4f6', color: '#9ca3af' }
     if (['حاضر', 'روتيشن'].includes(s)) return { background: '#dcfce7', color: '#15803d' }
@@ -394,10 +420,16 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
         {viewMode === 'monthly' && (
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             {filteredMonthlySummary.length > 0 && (
-              <button onClick={handlePrintMonthly}
-                style={{background:'#f3f4f6',color:'#374151',border:'1px solid #d1d5db',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
-                طباعة التقرير
-              </button>
+              <>
+                <button onClick={handleExportExcel}
+                  style={{background:'#dcfce7',color:'#15803d',border:'1px solid #86efac',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  تصدير Excel
+                </button>
+                <button onClick={handlePrintMonthly}
+                  style={{background:'#f3f4f6',color:'#374151',border:'1px solid #d1d5db',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  طباعة التقرير
+                </button>
+              </>
             )}
           </div>
         )}
