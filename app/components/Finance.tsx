@@ -9,6 +9,7 @@ const supabase = createClient(
 
 interface Fund {
   id: string
+  fund_code: string
   المصدر: string
   'تاريخ الاستلام': string
   'المبلغ المستلم': number
@@ -27,6 +28,7 @@ interface Expense {
 }
 
 interface FundForm {
+  fund_code: string
   source: string
   amount: string
   received_date: string
@@ -52,7 +54,7 @@ export default function Finance({ readOnly = false }: { readOnly?: boolean }) {
   const [todayStr, setTodayStr] = useState('')
   const printRef = useRef<HTMLDivElement>(null)
 
-  const [fundForm, setFundForm] = useState<FundForm>({ source: '', amount: '', received_date: '', notes: '' })
+  const [fundForm, setFundForm] = useState<FundForm>({ fund_code: '', source: '', amount: '', received_date: '', notes: '' })
   const [expenseForm, setExpenseForm] = useState<ExpenseForm>({ description: '', amount: '', expense_type: '', expense_date: '', notes: '' })
 
   useEffect(() => {
@@ -87,17 +89,23 @@ export default function Finance({ readOnly = false }: { readOnly?: boolean }) {
   }
 
   async function saveFund() {
-    if (!fundForm.source || !fundForm.amount) { alert('يرجى تعبئة المصدر والمبلغ'); return }
+    if (!fundForm.source || !fundForm.amount || !fundForm.fund_code) { alert('يرجى تعبئة كود السلفة والمصدر والمبلغ'); return }
     setLoading(true)
     const { error } = await supabase.from('funds').insert([{
+      fund_code: fundForm.fund_code,
       source: fundForm.source,
       amount: parseFloat(fundForm.amount),
       received_date: fundForm.received_date,
       notes: fundForm.notes
     }])
-    if (error) alert('خطأ: ' + error.message)
-    else {
-      setFundForm({ source: '', amount: '', received_date: todayStr, notes: '' })
+    if (error) {
+      if (error.message.includes('duplicate') || error.message.includes('unique')) {
+        alert('كود السلفة هذا مستخدم من قبل، اختر كوداً آخر')
+      } else {
+        alert('خطأ: ' + error.message)
+      }
+    } else {
+      setFundForm({ fund_code: '', source: '', amount: '', received_date: todayStr, notes: '' })
       setShowFundForm(false)
       loadFunds()
     }
@@ -250,6 +258,11 @@ export default function Finance({ readOnly = false }: { readOnly?: boolean }) {
       {!readOnly && view === 'funds' && showFundForm && (
         <div style={{padding:'20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,maxWidth:600}}>
+            <div>
+              <label style={{display:'block',marginBottom:6,fontSize:13,fontWeight:600,color:'#374151'}}>كود السلفة *</label>
+              <input value={fundForm.fund_code} onChange={e=>setFundForm({...fundForm,fund_code:e.target.value})} placeholder="مثال: S-001"
+                style={{width:'100%',padding:'10px 14px',borderRadius:8,border:'2px solid #d1d5db',fontSize:14,boxSizing:'border-box',color:'#111827',background:'#fff',direction:'ltr',textAlign:'right'}}/>
+            </div>
             <div>
               <label style={{display:'block',marginBottom:6,fontSize:13,fontWeight:600,color:'#374151'}}>مصدر المبلغ *</label>
               <input value={fundForm.source} onChange={e=>setFundForm({...fundForm,source:e.target.value})} placeholder="مثال: الإدارة العامة"
@@ -406,7 +419,7 @@ export default function Finance({ readOnly = false }: { readOnly?: boolean }) {
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:14}}>
               <thead>
                 <tr style={{background:'#f3f4f6'}}>
-                  {['المصدر','تاريخ الاستلام','المبلغ المستلم','إجمالي المصروف','المتبقي','ملاحظات',''].map(h=>(
+                  {['كود السلفة','المصدر','تاريخ الاستلام','المبلغ المستلم','إجمالي المصروف','المتبقي','ملاحظات',''].map(h=>(
                     <th key={h} style={{padding:'12px 16px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
                   ))}
                 </tr>
@@ -414,6 +427,7 @@ export default function Finance({ readOnly = false }: { readOnly?: boolean }) {
               <tbody>
                 {funds.map((fund,idx)=>(
                   <tr key={idx} style={{borderBottom:'1px solid #e5e7eb'}}>
+                    <td style={{padding:'12px 16px',fontWeight:700,color:'#7c3aed',direction:'ltr',textAlign:'right'}}>{fund.fund_code}</td>
                     <td style={{padding:'12px 16px',fontWeight:600,color:'#111827'}}>{fund['المصدر']}</td>
                     <td style={{padding:'12px 16px',color:'#6b7280'}}>{fund['تاريخ الاستلام']}</td>
                     <td style={{padding:'12px 16px',color:'#1d4ed8',fontWeight:700}}>{formatAmount(fund['المبلغ المستلم'])}</td>
