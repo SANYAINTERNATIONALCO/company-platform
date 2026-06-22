@@ -79,6 +79,25 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([])
   const [dailyDetails, setDailyDetails] = useState<Record<string, DailyDetail[]>>({})
 
+  // قوائم منسدلة
+  const [monthDropdownOpen, setMonthDropdownOpen] = useState(false)
+  const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false)
+  const monthDropdownRef = useRef<HTMLDivElement>(null)
+  const employeeDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (monthDropdownRef.current && !monthDropdownRef.current.contains(e.target as Node)) {
+        setMonthDropdownOpen(false)
+      }
+      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(e.target as Node)) {
+        setEmployeeDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   useEffect(() => { loadEmployees() }, [])
 
   useEffect(() => {
@@ -253,8 +272,9 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
         <meta charset="UTF-8">
         <title>الموقف الشهري</title>
         <style>
+          @page { margin: 12mm; size: A4; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; direction: rtl; color: #111; padding: 20px; }
+          body { font-family: Arial, sans-serif; direction: rtl; color: #111; padding: 0; }
           .header { text-align: center; border-bottom: 3px solid #1e40af; padding-bottom: 16px; margin-bottom: 24px; }
           .company-name { font-size: 22px; font-weight: bold; color: #1e40af; margin-bottom: 4px; }
           .report-title { font-size: 16px; color: #374151; margin-bottom: 4px; }
@@ -269,6 +289,9 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
           .absent { color: #dc2626; font-weight: bold; }
           .present { color: #15803d; font-weight: bold; }
           .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ca3af; }
+          .signatures { display: flex; justify-content: space-between; margin-top: 60px; padding: 0 20px; }
+          .signature-box { text-align: center; min-width: 200px; }
+          .signature-line { border-top: 1px solid #111; margin-top: 50px; padding-top: 8px; font-size: 13px; font-weight: 600; color: #111827; }
         </style>
       </head>
       <body>${printContent.innerHTML}</body>
@@ -361,7 +384,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
                 </button>
                 <button onClick={saveAll} disabled={saving || unsavedCount === 0}
                   style={{background:unsavedCount>0?'#16a34a':'#9ca3af',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:unsavedCount>0?'pointer':'default',fontSize:14,fontWeight:600}}>
-                  {saving ? 'جارٍ الحفظ...' : unsavedCount > 0 ? `حفظ الكل (${unsavedCount})` : 'محفوظ'}
+                  {saving ? 'جارٍ الحفظ...' : unsavedCount > 0 ? 'حفظ الكل (' + unsavedCount + ')' : 'محفوظ'}
                 </button>
               </>
             )}
@@ -484,7 +507,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
             <div style={{padding:'16px 20px',borderTop:'2px solid #e5e7eb',display:'flex',justifyContent:'flex-end',background:'#f9fafb'}}>
               <button onClick={saveAll} disabled={saving||unsavedCount===0}
                 style={{background:unsavedCount>0?'#16a34a':'#9ca3af',color:'#fff',border:'none',borderRadius:8,padding:'10px 28px',cursor:unsavedCount>0?'pointer':'default',fontSize:14,fontWeight:700}}>
-                {saving?'جارٍ الحفظ...':unsavedCount>0?`حفظ الكل (${unsavedCount})`:'جميع السجلات محفوظة'}
+                {saving?'جارٍ الحفظ...':unsavedCount>0?'حفظ الكل (' + unsavedCount + ')':'جميع السجلات محفوظة'}
               </button>
             </div>
           )}
@@ -494,38 +517,65 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
         <div>
           {/* اختيار الأشهر والموظفين */}
           <div style={{padding:'16px 20px',borderBottom:'1px solid #e5e7eb',background:'#fff',display:'flex',gap:24,flexWrap:'wrap'}}>
-            <div>
+            {/* قائمة منسدلة للأشهر */}
+            <div ref={monthDropdownRef} style={{position:'relative',minWidth:220}}>
               <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:8}}>اختر الشهر/الأشهر:</div>
-              <div style={{display:'flex',gap:6,flexWrap:'wrap',maxWidth:400}}>
-                {availableMonths.length === 0 ? (
-                  <span style={{fontSize:12,color:'#9ca3af'}}>لا توجد بيانات بعد</span>
-                ) : availableMonths.map(m => (
-                  <button key={m} onClick={()=>toggleMonth(m)}
-                    style={{padding:'6px 12px',borderRadius:8,border:selectedMonths.includes(m)?'2px solid #1e40af':'1px solid #d1d5db',
-                      background:selectedMonths.includes(m)?'#dbeafe':'#fff',color:selectedMonths.includes(m)?'#1e40af':'#6b7280',
-                      cursor:'pointer',fontSize:12,fontWeight:600}}>
-                    {monthLabel(m)}
-                  </button>
-                ))}
-              </div>
+              <button onClick={()=>setMonthDropdownOpen(!monthDropdownOpen)}
+                style={{width:'100%',padding:'9px 14px',borderRadius:8,border:'2px solid #d1d5db',background:'#fff',cursor:'pointer',
+                  fontSize:13,color:'#111827',display:'flex',alignItems:'center',justifyContent:'space-between',textAlign:'right'}}>
+                <span>
+                  {availableMonths.length === 0 ? 'لا توجد بيانات بعد'
+                    : selectedMonths.length === 0 ? 'اختر الشهر/الأشهر'
+                    : selectedMonths.length === 1 ? monthLabel(selectedMonths[0])
+                    : selectedMonths.length + ' أشهر محددة'}
+                </span>
+                <span style={{fontSize:11,color:'#9ca3af'}}>{monthDropdownOpen ? '▲' : '▼'}</span>
+              </button>
+              {monthDropdownOpen && availableMonths.length > 0 && (
+                <div style={{position:'absolute',top:'100%',right:0,left:0,marginTop:4,background:'#fff',border:'2px solid #d1d5db',borderRadius:8,
+                  boxShadow:'0 8px 24px rgba(0,0,0,0.12)',zIndex:20,maxHeight:240,overflowY:'auto'}}>
+                  {availableMonths.map(m => (
+                    <label key={m} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 14px',cursor:'pointer',fontSize:13,
+                      borderBottom:'1px solid #f3f4f6',background:selectedMonths.includes(m)?'#eff6ff':'#fff'}}>
+                      <input type="checkbox" checked={selectedMonths.includes(m)} onChange={()=>toggleMonth(m)}/>
+                      <span style={{color:selectedMonths.includes(m)?'#1e40af':'#374151',fontWeight:selectedMonths.includes(m)?600:400}}>{monthLabel(m)}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div>
+            {/* قائمة منسدلة للموظفين */}
+            <div ref={employeeDropdownRef} style={{position:'relative',minWidth:260}}>
               <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:8}}>اختر موظفين (اختياري - افتراضي: الجميع):</div>
-              <div style={{display:'flex',gap:6,flexWrap:'wrap',maxWidth:500,maxHeight:90,overflowY:'auto'}}>
-                {employees.map(emp => (
-                  <button key={emp.id} onClick={()=>toggleEmployeeSelect(emp.id)}
-                    style={{padding:'5px 10px',borderRadius:8,border:selectedEmployeeIds.includes(emp.id)?'2px solid #7c3aed':'1px solid #d1d5db',
-                      background:selectedEmployeeIds.includes(emp.id)?'#ede9fe':'#fff',color:selectedEmployeeIds.includes(emp.id)?'#7c3aed':'#6b7280',
-                      cursor:'pointer',fontSize:11,fontWeight:600}}>
-                    {emp.name}
-                  </button>
-                ))}
-              </div>
-              {selectedEmployeeIds.length > 0 && (
-                <button onClick={()=>setSelectedEmployeeIds([])} style={{marginTop:6,background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:11}}>
-                  إلغاء التحديد ({selectedEmployeeIds.length})
-                </button>
+              <button onClick={()=>setEmployeeDropdownOpen(!employeeDropdownOpen)}
+                style={{width:'100%',padding:'9px 14px',borderRadius:8,border:'2px solid #d1d5db',background:'#fff',cursor:'pointer',
+                  fontSize:13,color:'#111827',display:'flex',alignItems:'center',justifyContent:'space-between',textAlign:'right'}}>
+                <span>
+                  {selectedEmployeeIds.length === 0 ? 'كل الموظفين'
+                    : selectedEmployeeIds.length === 1 ? employees.find(e=>e.id===selectedEmployeeIds[0])?.name
+                    : selectedEmployeeIds.length + ' موظفين محددين'}
+                </span>
+                <span style={{fontSize:11,color:'#9ca3af'}}>{employeeDropdownOpen ? '▲' : '▼'}</span>
+              </button>
+              {employeeDropdownOpen && (
+                <div style={{position:'absolute',top:'100%',right:0,left:0,marginTop:4,background:'#fff',border:'2px solid #d1d5db',borderRadius:8,
+                  boxShadow:'0 8px 24px rgba(0,0,0,0.12)',zIndex:20,maxHeight:280,overflowY:'auto'}}>
+                  {selectedEmployeeIds.length > 0 && (
+                    <button onClick={()=>setSelectedEmployeeIds([])}
+                      style={{width:'100%',textAlign:'right',padding:'8px 14px',background:'#fef2f2',color:'#dc2626',border:'none',borderBottom:'1px solid #fca5a5',cursor:'pointer',fontSize:12,fontWeight:600}}>
+                      إلغاء كل التحديدات
+                    </button>
+                  )}
+                  {employees.map(emp => (
+                    <label key={emp.id} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 14px',cursor:'pointer',fontSize:13,
+                      borderBottom:'1px solid #f3f4f6',background:selectedEmployeeIds.includes(emp.id)?'#f5f3ff':'#fff'}}>
+                      <input type="checkbox" checked={selectedEmployeeIds.includes(emp.id)} onChange={()=>toggleEmployeeSelect(emp.id)}/>
+                      <span style={{color:selectedEmployeeIds.includes(emp.id)?'#7c3aed':'#374151',fontWeight:selectedEmployeeIds.includes(emp.id)?600:400}}>{emp.name}</span>
+                      <span style={{fontSize:11,color:'#9ca3af',marginRight:'auto'}}>{emp.job_title}</span>
+                    </label>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -585,6 +635,14 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
                 </table>
               </div>
             )}
+            <div className="signatures">
+              <div className="signature-box">
+                <div className="signature-line">مدير قسم الموارد البشرية</div>
+              </div>
+              <div className="signature-box">
+                <div className="signature-line">مدير الموقع</div>
+              </div>
+            </div>
             <div className="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — {new Date().toLocaleDateString('ar-IQ')}</div>
           </div>
 
