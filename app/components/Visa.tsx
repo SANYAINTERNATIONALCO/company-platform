@@ -261,3 +261,478 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     for (const nat of nationalities) {
       await supabase.from('visa_stats').upsert({
         category, nationality: nat.key, count: editValues[nat.key] || 0, updated_at: new Date().toISOString()
+      }, { onConflict: 'category,nationality' })
+    }
+    await loadStats()
+    setEditMode(null)
+    setLoading(false)
+  }
+
+  async function handleFileUpload(category: string, nationality: string, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const key = category + '_' + nationality
+    setUploading(key)
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${category}_${nationality}_${Date.now()}.${fileExt}`
+    const { data, error } = await supabase.storage.from('visa-files').upload(fileName, file)
+    if (error) {
+      await supabase.from('visa_files').insert([{ category, nationality, file_name: file.name, file_url: '' }])
+    } else {
+      const { data: urlData } = supabase.storage.from('visa-files').getPublicUrl(data.path)
+      await supabase.from('visa_files').insert([{ category, nationality, file_name: file.name, file_url: urlData.publicUrl }])
+    }
+    await loadFiles()
+    setUploading(null)
+    e.target.value = ''
+  }
+
+  async function deleteFile(id: string) {
+    if (!confirm('هل أنت متأكد من حذف هذا الملف؟')) return
+    await supabase.from('visa_files').delete().eq('id', id)
+    loadFiles()
+  }
+
+  function getFiles(category: string, nationality: string): VisaFile[] {
+    return files.filter(f => f.category === category && f.nationality === nationality)
+  }
+
+  const grandTotal = getTotal('total')
+  const totalViolatorsCombined = getTotal('violators') + touristViolated + annualViolated
+  const inputStyle = { width:'100%', padding:'9px 12px', borderRadius:8, border:'2px solid #d1d5db', fontSize:13, boxSizing:'border-box' as const, color:'#111827', background:'#fff', marginBottom:10 }
+
+  const filteredTourist = useMemo(() => {
+    if (!touristSearch.trim()) return touristVisas
+    const term = touristSearch.toLowerCase()
+    return touristVisas.filter(v => v.full_name.toLowerCase().includes(term) || (v.passport_number||'').toLowerCase().includes(term))
+  }, [touristVisas, touristSearch])
+
+  const filteredAnnual = useMemo(() => {
+    if (!annualSearch.trim()) return annualVisas
+    const term = annualSearch.toLowerCase()
+    return annualVisas.filter(v => v.full_name.toLowerCase().includes(term) || (v.passport_number||'').toLowerCase().includes(term))
+  }, [annualVisas, annualSearch])
+
+  function toggleTouristSelect(id: string) {
+    setTouristSelected(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id])
+  }
+  function toggleAnnualSelect(id: string) {
+    setAnnualSelected(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id])
+  }
+  function toggleAllTourist() {
+    if (touristSelected.length === filteredTourist.length) setTouristSelected([])
+    else setTouristSelected(filteredTourist.map(v=>v.id))
+  }
+  function toggleAllAnnual() {
+    if (annualSelected.length === filteredAnnual.length) setAnnualSelected([])
+    else setAnnualSelected(filteredAnnual.map(v=>v.id))
+  }
+
+  return (
+    <div style={{margin:'24px',fontFamily:'system-ui',direction:'rtl'}}>
+
+      {/* تبويبات */}
+      <div style={{display:'flex',gap:6,marginBottom:16,background:'#e5e7eb',padding:4,borderRadius:10,width:'fit-content',flexWrap:'wrap'}}>
+        <button onClick={()=>setActiveTab('stats')}
+          style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+            background:activeTab==='stats'?'#fff':'transparent',color:activeTab==='stats'?'#1e40af':'#6b7280',
+            boxShadow:activeTab==='stats'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+          إحصائيات الأجانب
+        </button>
+        <button onClick={()=>setActiveTab('tourist')}
+          style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+            background:activeTab==='tourist'?'#fff':'transparent',color:activeTab==='tourist'?'#1e40af':'#6b7280',
+            boxShadow:activeTab==='tourist'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+          التأشيرات السياحية
+          {(touristViolated > 0 || touristWarning > 0) && (
+            <span style={{marginRight:6,background:'#dc2626',color:'#fff',borderRadius:20,padding:'1px 7px',fontSize:11,fontWeight:700}}>
+              {touristViolated + touristWarning}
+            </span>
+          )}
+        </button>
+        <button onClick={()=>setActiveTab('annual')}
+          style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+            background:activeTab==='annual'?'#fff':'transparent',color:activeTab==='annual'?'#1e40af':'#6b7280',
+            boxShadow:activeTab==='annual'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+          التأشيرات السنوية
+          {(annualViolated > 0 || annualWarning > 0) && (
+            <span style={{marginRight:6,background:'#dc2626',color:'#fff',borderRadius:20,padding:'1px 7px',fontSize:11,fontWeight:700}}>
+              {annualViolated + annualWarning}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* قسم الإحصائيات */}
+      {activeTab === 'stats' && (
+        <div>
+          <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden',marginBottom:20}}>
+            <div style={{padding:'16px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <h2 style={{margin:0,fontSize:17,fontWeight:700,color:'#111827'}}>إحصائيات الأجانب والتأشيرات</h2>
+              {readOnly && <span style={{fontSize:12,background:'#fef9c3',color:'#b45309',padding:'3px 10px',borderRadius:20,fontWeight:600}}>قراءة فقط</span>}
+            </div>
+            <div style={{padding:'20px'}}>
+              <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:12}}>
+                <div style={{background:'linear-gradient(135deg, #1e40af, #3b82f6)',borderRadius:12,padding:'20px 24px',color:'#fff',textAlign:'center'}}>
+                  <div style={{fontSize:13,opacity:0.85,marginBottom:6}}>إجمالي الأجانب في الشركة</div>
+                  <div style={{fontSize:48,fontWeight:700,marginBottom:4}}>{grandTotal}</div>
+                  <div style={{fontSize:13,opacity:0.75}}>صينيين: {getCount('total','chinese')} — باكستانيين: {getCount('total','pakistani')}</div>
+                </div>
+                <div style={{background:'linear-gradient(135deg, #dc2626, #ef4444)',borderRadius:12,padding:'20px 24px',color:'#fff',textAlign:'center',display:'flex',flexDirection:'column',justifyContent:'center'}}>
+                  <div style={{fontSize:13,opacity:0.85,marginBottom:6}}>إجمالي المخالفين (شامل التأشيرات)</div>
+                  <div style={{fontSize:40,fontWeight:700}}>{totalViolatorsCombined}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {categories.map(cat => (
+            <div key={cat.key} style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden',marginBottom:16}}>
+              <div style={{padding:'14px 20px',background:cat.bg,borderBottom:`2px solid ${cat.color}22`,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <span style={{fontSize:20}}>{cat.icon}</span>
+                  <div>
+                    <div style={{fontSize:15,fontWeight:700,color:cat.color}}>{cat.label}</div>
+                    <div style={{fontSize:13,color:'#6b7280',marginTop:2}}>المجموع: <strong style={{color:cat.color}}>{getTotal(cat.key)}</strong></div>
+                  </div>
+                </div>
+                {!readOnly && (
+                  editMode === cat.key ? (
+                    <div style={{display:'flex',gap:8}}>
+                      <button onClick={()=>saveEdit(cat.key)} disabled={loading}
+                        style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                        {loading ? '...' : 'حفظ'}
+                      </button>
+                      <button onClick={()=>setEditMode(null)}
+                        style={{background:'#e5e7eb',color:'#374151',border:'none',borderRadius:8,padding:'7px 14px',cursor:'pointer',fontSize:13}}>
+                        إلغاء
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={()=>startEdit(cat.key)}
+                      style={{background:'#fff',color:cat.color,border:`1px solid ${cat.color}`,borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                      تعديل
+                    </button>
+                  )
+                )}
+              </div>
+              <div style={{padding:'16px 20px'}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  {nationalities.map(nat => (
+                    <div key={nat.key} style={{background:'#f9fafb',borderRadius:10,padding:'14px 16px',border:'1px solid #e5e7eb'}}>
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                        <div style={{fontSize:14,fontWeight:600,color:'#374151'}}>{nat.flag} {nat.label}</div>
+                        {editMode === cat.key ? (
+                          <input type="number" min="0" value={editValues[nat.key] || 0}
+                            onChange={e=>setEditValues({...editValues,[nat.key]:parseInt(e.target.value)||0})}
+                            style={{width:80,padding:'6px 10px',borderRadius:8,border:'2px solid #d1d5db',fontSize:16,fontWeight:700,textAlign:'center',color:'#111827'}}/>
+                        ) : (
+                          <div style={{fontSize:28,fontWeight:700,color:cat.color}}>{getCount(cat.key, nat.key)}</div>
+                        )}
+                      </div>
+                      <div style={{borderTop:'1px solid #e5e7eb',paddingTop:10,marginTop:4}}>
+                        <div style={{fontSize:12,color:'#6b7280',marginBottom:6,fontWeight:500}}>الملفات المرفوعة:</div>
+                        {getFiles(cat.key, nat.key).length === 0 ? (
+                          <div style={{fontSize:12,color:'#9ca3af'}}>لا توجد ملفات</div>
+                        ) : (
+                          <div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:8}}>
+                            {getFiles(cat.key, nat.key).map(f => (
+                              <div key={f.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#fff',borderRadius:6,padding:'5px 8px',border:'1px solid #e5e7eb'}}>
+                                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                                  <span style={{fontSize:16}}>📄</span>
+                                  {f.file_url ? (
+                                    <a href={f.file_url} target="_blank" rel="noreferrer" style={{fontSize:12,color:'#1d4ed8',textDecoration:'none',fontWeight:500}}>{f.file_name}</a>
+                                  ) : (<span style={{fontSize:12,color:'#374151'}}>{f.file_name}</span>)}
+                                </div>
+                                {!readOnly && (<button onClick={()=>deleteFile(f.id)} style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:14,padding:'0 4px'}}>✕</button>)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {!readOnly && (
+                          <label style={{display:'inline-flex',alignItems:'center',gap:6,background:'#eff6ff',color:'#1d4ed8',border:'1px dashed #93c5fd',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,fontWeight:500}}>
+                            {uploading === cat.key+'_'+nat.key ? 'جارٍ الرفع...' : 'رفع ملف Excel'}
+                            <input type="file" accept=".xlsx,.xls,.csv" style={{display:'none'}} onChange={e=>handleFileUpload(cat.key, nat.key, e)} disabled={uploading !== null}/>
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* قسم التأشيرات السياحية */}
+      {activeTab === 'tourist' && (
+        <div>
+          {touristViolated > 0 && (
+            <div style={{background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:10,padding:'12px 16px',marginBottom:12,display:'flex',alignItems:'center',gap:10}}>
+              <span style={{fontSize:14,fontWeight:600,color:'#dc2626'}}>{touristViolated} شخص منتهية تأشيرته ويعتبر مخالفاً</span>
+            </div>
+          )}
+          {touristWarning > 0 && (
+            <div style={{background:'#fef9c3',border:'1px solid #fcd34d',borderRadius:10,padding:'12px 16px',marginBottom:12,display:'flex',alignItems:'center',gap:10}}>
+              <span style={{fontSize:14,fontWeight:600,color:'#b45309'}}>{touristWarning} شخص تأشيرته تنتهي خلال 7 أيام</span>
+            </div>
+          )}
+
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:16}}>
+            <div style={{background:'#fff',borderRadius:10,padding:'14px 16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',textAlign:'center'}}>
+              <div style={{fontSize:12,color:'#6b7280',fontWeight:600,marginBottom:4}}>إجمالي</div>
+              <div style={{fontSize:28,fontWeight:700,color:'#1e40af'}}>{touristVisas.length}</div>
+            </div>
+            <div style={{background:'#fee2e2',borderRadius:10,padding:'14px 16px',textAlign:'center'}}>
+              <div style={{fontSize:12,color:'#dc2626',fontWeight:600,marginBottom:4}}>مخالفون</div>
+              <div style={{fontSize:28,fontWeight:700,color:'#dc2626'}}>{touristViolated}</div>
+            </div>
+            <div style={{background:'#dcfce7',borderRadius:10,padding:'14px 16px',textAlign:'center'}}>
+              <div style={{fontSize:12,color:'#15803d',fontWeight:600,marginBottom:4}}>سارية</div>
+              <div style={{fontSize:28,fontWeight:700,color:'#15803d'}}>{touristVisas.length - touristViolated}</div>
+            </div>
+          </div>
+
+          <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
+            <div style={{padding:'16px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}}>
+              <h2 style={{margin:0,fontSize:17,fontWeight:700,color:'#111827'}}>التأشيرات السياحية</h2>
+              <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                <input placeholder="بحث بالاسم أو رقم الجواز..." value={touristSearch} onChange={e=>setTouristSearch(e.target.value)}
+                  style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:13,color:'#111827',minWidth:200}}/>
+                {!readOnly && touristSelected.length > 0 && (
+                  <button onClick={deleteSelectedTourist}
+                    style={{background:'#dc2626',color:'#fff',border:'none',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                    حذف المحدد ({touristSelected.length})
+                  </button>
+                )}
+                {!readOnly && (
+                  <button onClick={()=>setShowTouristForm(!showTouristForm)}
+                    style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                    {showTouristForm ? 'إلغاء' : '+ إضافة شخص'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {!readOnly && showTouristForm && (
+              <div style={{padding:'20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,maxWidth:600}}>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الاسم الكامل *</label>
+                    <input value={touristForm.full_name} onChange={e=>setTouristForm({...touristForm,full_name:e.target.value})} placeholder="اسم الشخص" style={inputStyle}/></div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>رقم الجواز</label>
+                    <input value={touristForm.passport_number} onChange={e=>setTouristForm({...touristForm,passport_number:e.target.value})} placeholder="رقم الجواز" style={{...inputStyle,direction:'ltr',textAlign:'right'}}/></div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الجنسية</label>
+                    <input value={touristForm.nationality} onChange={e=>setTouristForm({...touristForm,nationality:e.target.value})} placeholder="مثال: صيني" style={inputStyle}/></div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ الدخول *</label>
+                    <input type="date" value={touristForm.entry_date} onChange={e=>setTouristForm({...touristForm,entry_date:e.target.value})} style={inputStyle}/></div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>مدة الفيزا</label>
+                    <select value={touristForm.visa_duration} onChange={e=>setTouristForm({...touristForm,visa_duration:e.target.value})} style={inputStyle}>
+                      <option value="30">30 يوم</option>
+                      <option value="60">60 يوم</option>
+                    </select>
+                  </div>
+                </div>
+                <button onClick={addTouristVisa} disabled={loading}
+                  style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                  {loading ? 'جارٍ الحفظ...' : 'حفظ'}
+                </button>
+              </div>
+            )}
+
+            {filteredTourist.length === 0 ? (
+              <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>لا توجد نتائج</div>
+            ) : (
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                  <thead>
+                    <tr style={{background:'#f3f4f6'}}>
+                      <th style={{padding:'10px 14px',borderBottom:'2px solid #e5e7eb'}}>
+                        {!readOnly && <input type="checkbox" checked={touristSelected.length===filteredTourist.length && filteredTourist.length>0} onChange={toggleAllTourist}/>}
+                      </th>
+                      {['الاسم','رقم الجواز','الجنسية','تاريخ الدخول','المدة','تاريخ الانتهاء','الحالة','ملاحظات',''].map(h=>(
+                        <th key={h} style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTourist.map(visa=>{
+                      const vs = getTouristStatus(visa)
+                      return (
+                        <tr key={visa.id} style={{borderBottom:'1px solid #e5e7eb',background:visa.status==='violated'?'#fff5f5':'#fff'}}>
+                          <td style={{padding:'10px 14px'}}>
+                            {!readOnly && <input type="checkbox" checked={touristSelected.includes(visa.id)} onChange={()=>toggleTouristSelect(visa.id)}/>}
+                          </td>
+                          <td style={{padding:'10px 14px',fontWeight:600,color:'#111827'}}>{visa.full_name}</td>
+                          <td style={{padding:'10px 14px',color:'#6b7280',direction:'ltr',textAlign:'right'}}>{visa.passport_number || '—'}</td>
+                          <td style={{padding:'10px 14px',color:'#6b7280'}}>{visa.nationality || '—'}</td>
+                          <td style={{padding:'10px 14px',color:'#6b7280'}}>{visa.entry_date}</td>
+                          <td style={{padding:'10px 14px',textAlign:'center'}}>
+                            <span style={{background:'#dbeafe',color:'#1d4ed8',padding:'3px 10px',borderRadius:20,fontSize:12,fontWeight:600}}>{visa.visa_duration} يوم</span>
+                          </td>
+                          <td style={{padding:'10px 14px',color:'#374151',fontWeight:500}}>{visa.expiry_date}</td>
+                          <td style={{padding:'10px 14px'}}>
+                            <span style={{background:vs.bg,color:vs.color,padding:'4px 12px',borderRadius:20,fontSize:12,fontWeight:700}}>{vs.label}</span>
+                          </td>
+                          <td style={{padding:'10px 14px',maxWidth:200}}>
+                            {editingNote === visa.id ? (
+                              <div style={{display:'flex',gap:6}}>
+                                <input value={noteText} onChange={e=>setNoteText(e.target.value)} style={{flex:1,padding:'5px 8px',borderRadius:6,border:'1px solid #d1d5db',fontSize:12,color:'#111827'}}/>
+                                <button onClick={()=>saveTouristNote(visa.id)} style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:12}}>حفظ</button>
+                                <button onClick={()=>setEditingNote(null)} style={{background:'#e5e7eb',color:'#374151',border:'none',borderRadius:6,padding:'5px 8px',cursor:'pointer',fontSize:12}}>✕</button>
+                              </div>
+                            ) : (
+                              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                                <span style={{fontSize:12,color:'#6b7280'}}>{visa.notes || '—'}</span>
+                                {!readOnly && (<button onClick={()=>{ setEditingNote(visa.id); setNoteText(visa.notes||'') }} style={{background:'none',border:'none',color:'#1d4ed8',cursor:'pointer',fontSize:12,padding:'2px 6px'}}>تعديل</button>)}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{padding:'10px 14px'}}>
+                            {!readOnly && (
+                              <button onClick={()=>deleteTouristVisa(visa.id)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:12,fontWeight:600}}>حذف</button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* قسم التأشيرات السنوية */}
+      {activeTab === 'annual' && (
+        <div>
+          {annualViolated > 0 && (
+            <div style={{background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:10,padding:'12px 16px',marginBottom:12,display:'flex',alignItems:'center',gap:10}}>
+              <span style={{fontSize:14,fontWeight:600,color:'#dc2626'}}>{annualViolated} شخص منتهية تأشيرته ويعتبر مخالفاً</span>
+            </div>
+          )}
+          {annualWarning > 0 && (
+            <div style={{background:'#fef9c3',border:'1px solid #fcd34d',borderRadius:10,padding:'12px 16px',marginBottom:12,display:'flex',alignItems:'center',gap:10}}>
+              <span style={{fontSize:14,fontWeight:600,color:'#b45309'}}>{annualWarning} شخص تأشيرته تنتهي خلال 4 أشهر أو أقل</span>
+            </div>
+          )}
+
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:16}}>
+            <div style={{background:'#fff',borderRadius:10,padding:'14px 16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',textAlign:'center'}}>
+              <div style={{fontSize:12,color:'#6b7280',fontWeight:600,marginBottom:4}}>إجمالي</div>
+              <div style={{fontSize:28,fontWeight:700,color:'#1e40af'}}>{annualVisas.length}</div>
+            </div>
+            <div style={{background:'#fee2e2',borderRadius:10,padding:'14px 16px',textAlign:'center'}}>
+              <div style={{fontSize:12,color:'#dc2626',fontWeight:600,marginBottom:4}}>مخالفون</div>
+              <div style={{fontSize:28,fontWeight:700,color:'#dc2626'}}>{annualViolated}</div>
+            </div>
+            <div style={{background:'#dcfce7',borderRadius:10,padding:'14px 16px',textAlign:'center'}}>
+              <div style={{fontSize:12,color:'#15803d',fontWeight:600,marginBottom:4}}>سارية</div>
+              <div style={{fontSize:28,fontWeight:700,color:'#15803d'}}>{annualVisas.length - annualViolated}</div>
+            </div>
+          </div>
+
+          <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
+            <div style={{padding:'16px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}}>
+              <h2 style={{margin:0,fontSize:17,fontWeight:700,color:'#111827'}}>التأشيرات السنوية</h2>
+              <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                <input placeholder="بحث بالاسم أو رقم الجواز..." value={annualSearch} onChange={e=>setAnnualSearch(e.target.value)}
+                  style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:13,color:'#111827',minWidth:200}}/>
+                {!readOnly && annualSelected.length > 0 && (
+                  <button onClick={deleteSelectedAnnual}
+                    style={{background:'#dc2626',color:'#fff',border:'none',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                    حذف المحدد ({annualSelected.length})
+                  </button>
+                )}
+                {!readOnly && (
+                  <button onClick={()=>setShowAnnualForm(!showAnnualForm)}
+                    style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                    {showAnnualForm ? 'إلغاء' : '+ إضافة شخص'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {!readOnly && showAnnualForm && (
+              <div style={{padding:'20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,maxWidth:600}}>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الاسم الكامل *</label>
+                    <input value={annualForm.full_name} onChange={e=>setAnnualForm({...annualForm,full_name:e.target.value})} placeholder="اسم الشخص" style={inputStyle}/></div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>رقم الجواز</label>
+                    <input value={annualForm.passport_number} onChange={e=>setAnnualForm({...annualForm,passport_number:e.target.value})} placeholder="رقم الجواز" style={{...inputStyle,direction:'ltr',textAlign:'right'}}/></div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الجنسية</label>
+                    <input value={annualForm.nationality} onChange={e=>setAnnualForm({...annualForm,nationality:e.target.value})} placeholder="مثال: صيني" style={inputStyle}/></div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ الدخول *</label>
+                    <input type="date" value={annualForm.entry_date} onChange={e=>setAnnualForm({...annualForm,entry_date:e.target.value})} style={inputStyle}/></div>
+                </div>
+                <button onClick={addAnnualVisa} disabled={loading}
+                  style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                  {loading ? 'جارٍ الحفظ...' : 'حفظ'}
+                </button>
+              </div>
+            )}
+
+            {filteredAnnual.length === 0 ? (
+              <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>لا توجد نتائج</div>
+            ) : (
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                  <thead>
+                    <tr style={{background:'#f3f4f6'}}>
+                      <th style={{padding:'10px 14px',borderBottom:'2px solid #e5e7eb'}}>
+                        {!readOnly && <input type="checkbox" checked={annualSelected.length===filteredAnnual.length && filteredAnnual.length>0} onChange={toggleAllAnnual}/>}
+                      </th>
+                      {['الاسم','رقم الجواز','الجنسية','تاريخ الدخول','تاريخ الانتهاء','الحالة','ملاحظات',''].map(h=>(
+                        <th key={h} style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAnnual.map(visa=>{
+                      const vs = getAnnualStatus(visa)
+                      return (
+                        <tr key={visa.id} style={{borderBottom:'1px solid #e5e7eb',background:visa.status==='violated'?'#fff5f5':'#fff'}}>
+                          <td style={{padding:'10px 14px'}}>
+                            {!readOnly && <input type="checkbox" checked={annualSelected.includes(visa.id)} onChange={()=>toggleAnnualSelect(visa.id)}/>}
+                          </td>
+                          <td style={{padding:'10px 14px',fontWeight:600,color:'#111827'}}>{visa.full_name}</td>
+                          <td style={{padding:'10px 14px',color:'#6b7280',direction:'ltr',textAlign:'right'}}>{visa.passport_number || '—'}</td>
+                          <td style={{padding:'10px 14px',color:'#6b7280'}}>{visa.nationality || '—'}</td>
+                          <td style={{padding:'10px 14px',color:'#6b7280'}}>{visa.entry_date}</td>
+                          <td style={{padding:'10px 14px',color:'#374151',fontWeight:500}}>{visa.expiry_date}</td>
+                          <td style={{padding:'10px 14px'}}>
+                            <span style={{background:vs.bg,color:vs.color,padding:'4px 12px',borderRadius:20,fontSize:12,fontWeight:700}}>{vs.label}</span>
+                          </td>
+                          <td style={{padding:'10px 14px',maxWidth:200}}>
+                            {editingNote === visa.id ? (
+                              <div style={{display:'flex',gap:6}}>
+                                <input value={noteText} onChange={e=>setNoteText(e.target.value)} style={{flex:1,padding:'5px 8px',borderRadius:6,border:'1px solid #d1d5db',fontSize:12,color:'#111827'}}/>
+                                <button onClick={()=>saveAnnualNote(visa.id)} style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:12}}>حفظ</button>
+                                <button onClick={()=>setEditingNote(null)} style={{background:'#e5e7eb',color:'#374151',border:'none',borderRadius:6,padding:'5px 8px',cursor:'pointer',fontSize:12}}>✕</button>
+                              </div>
+                            ) : (
+                              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                                <span style={{fontSize:12,color:'#6b7280'}}>{visa.notes || '—'}</span>
+                                {!readOnly && (<button onClick={()=>{ setEditingNote(visa.id); setNoteText(visa.notes||'') }} style={{background:'none',border:'none',color:'#1d4ed8',cursor:'pointer',fontSize:12,padding:'2px 6px'}}>تعديل</button>)}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{padding:'10px 14px'}}>
+                            {!readOnly && (
+                              <button onClick={()=>deleteAnnualVisa(visa.id)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:12,fontWeight:600}}>حذف</button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
