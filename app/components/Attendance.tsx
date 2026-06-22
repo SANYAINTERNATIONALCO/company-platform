@@ -367,3 +367,300 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
             )}
           </div>
         )}
+
+        {viewMode === 'monthly' && (
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            {filteredMonthlySummary.length > 0 && (
+              <button onClick={handlePrintMonthly}
+                style={{background:'#f3f4f6',color:'#374151',border:'1px solid #d1d5db',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                طباعة التقرير
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* فلاتر البحث - يومي فقط */}
+      {viewMode === 'daily' && (
+        <div style={{padding:'12px 20px',background:'#fff',borderBottom:'1px solid #e5e7eb',display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+          <input
+            placeholder="بحث بالاسم..."
+            value={searchName}
+            onChange={e=>setSearchName(e.target.value)}
+            style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:13,color:'#111827',minWidth:180}}/>
+          <select value={filterJobTitle} onChange={e=>setFilterJobTitle(e.target.value)}
+            style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:13,color:'#111827',background:'#fff',minWidth:160}}>
+            <option value="">كل المناصب</option>
+            {jobTitles.map(jt => <option key={jt} value={jt}>{jt}</option>)}
+          </select>
+          {(searchName || filterJobTitle) && (
+            <button onClick={()=>{setSearchName('');setFilterJobTitle('')}}
+              style={{background:'#f3f4f6',color:'#6b7280',border:'none',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:12}}>
+              مسح الفلاتر
+            </button>
+          )}
+          <span style={{fontSize:12,color:'#9ca3af',marginRight:'auto'}}>{filteredEmployees.length} من {employees.length}</span>
+        </div>
+      )}
+
+      {viewMode === 'daily' && selectedDate && (
+        <div style={{padding:'12px 20px',background:'#eff6ff',borderBottom:'1px solid #dbeafe',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span style={{fontSize:14,color:'#1d4ed8',fontWeight:600}}>{formatDate(selectedDate)}</span>
+          <div style={{display:'flex',gap:12,alignItems:'center'}}>
+            {!readOnly && unsavedCount > 0 && <span style={{fontSize:13,color:'#d97706',fontWeight:500}}>يوجد {unsavedCount} تغيير غير محفوظ</span>}
+            {readOnly && <span style={{fontSize:12,color:'#6b7280'}}>وضع القراءة فقط</span>}
+          </div>
+        </div>
+      )}
+
+      {viewMode === 'daily' ? (
+        loading ? (
+          <div style={{textAlign:'center',padding:'3rem',color:'#6b7280'}}>جارٍ التحميل...</div>
+        ) : (
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+            <thead>
+              <tr style={{background:'#f3f4f6'}}>
+                <th style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',width:36}}>#</th>
+                <th style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>الموظف</th>
+                <th style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>المنصب</th>
+                <th style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>الحالة</th>
+                <th style={{padding:'10px 14px',textAlign:'center',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>دخول</th>
+                <th style={{padding:'10px 14px',textAlign:'center',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>خروج</th>
+                <th style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',minWidth:160}}>ملاحظات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredEmployees.map((emp,idx)=>{
+                const rec = records[emp.id]
+                return (
+                  <tr key={emp.id} style={{borderBottom:'1px solid #e5e7eb'}}>
+                    <td style={{padding:'10px 14px',color:'#9ca3af',fontSize:12}}>{idx+1}</td>
+                    <td style={{padding:'10px 14px',fontWeight:600,color:'#111827'}}>
+                      {emp.name}
+                      {emp.shift_type === 'روتيشن' && <span style={{fontSize:10,color:'#0891b2',marginRight:6,background:'#cffafe',padding:'1px 6px',borderRadius:8}}>روتيشن</span>}
+                    </td>
+                    <td style={{padding:'10px 14px',color:'#6b7280',fontSize:12}}>{emp.job_title}</td>
+                    <td style={{padding:'10px 14px'}}>
+                      {readOnly ? (
+                        <span style={{...statusColor(rec?.status),padding:'5px 12px',borderRadius:20,fontSize:12,fontWeight:600}}>{rec?.status || '— لم يسجل —'}</span>
+                      ) : (
+                        <select value={rec?.status||''} onChange={e=>updateRecord(emp.id,'status',e.target.value)}
+                          style={{padding:'6px 10px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#111827',background:'#fff',cursor:'pointer',fontWeight:500,...(rec?.status?statusColor(rec.status):{})}}>
+                          {statusLabels.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      )}
+                    </td>
+                    <td style={{padding:'10px 14px',textAlign:'center'}}>
+                      {readOnly ? (
+                        <span style={{fontSize:12,color:'#374151'}}>{rec?.check_in || '—'}</span>
+                      ) : (
+                        <input type="time" value={rec?.check_in || DEFAULT_CHECK_IN} onChange={e=>updateRecord(emp.id,'check_in',e.target.value)}
+                          style={{padding:'5px 8px',borderRadius:6,border:'1px solid #d1d5db',fontSize:12,color:'#111827',width:90}}/>
+                      )}
+                    </td>
+                    <td style={{padding:'10px 14px',textAlign:'center'}}>
+                      {readOnly ? (
+                        <span style={{fontSize:12,color:'#374151'}}>{rec?.check_out || '—'}</span>
+                      ) : (
+                        <input type="time" value={rec?.check_out || DEFAULT_CHECK_OUT} onChange={e=>updateRecord(emp.id,'check_out',e.target.value)}
+                          style={{padding:'5px 8px',borderRadius:6,border:'1px solid #d1d5db',fontSize:12,color:'#111827',width:90}}/>
+                      )}
+                    </td>
+                    <td style={{padding:'10px 14px'}}>
+                      {readOnly ? (
+                        <span style={{fontSize:12,color:'#6b7280'}}>{rec?.notes || '—'}</span>
+                      ) : (
+                        <input value={rec?.notes || ''} onChange={e=>updateRecord(emp.id,'notes',e.target.value)} placeholder="ملاحظة..."
+                          style={{padding:'6px 10px',borderRadius:6,border:'1px solid #d1d5db',fontSize:12,color:'#111827',width:'100%',boxSizing:'border-box'}}/>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {!readOnly && (
+            <div style={{padding:'16px 20px',borderTop:'2px solid #e5e7eb',display:'flex',justifyContent:'flex-end',background:'#f9fafb'}}>
+              <button onClick={saveAll} disabled={saving||unsavedCount===0}
+                style={{background:unsavedCount>0?'#16a34a':'#9ca3af',color:'#fff',border:'none',borderRadius:8,padding:'10px 28px',cursor:unsavedCount>0?'pointer':'default',fontSize:14,fontWeight:700}}>
+                {saving?'جارٍ الحفظ...':unsavedCount>0?`حفظ الكل (${unsavedCount})`:'جميع السجلات محفوظة'}
+              </button>
+            </div>
+          )}
+        </div>
+        )
+      ) : (
+        <div>
+          {/* اختيار الأشهر والموظفين */}
+          <div style={{padding:'16px 20px',borderBottom:'1px solid #e5e7eb',background:'#fff',display:'flex',gap:24,flexWrap:'wrap'}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:8}}>اختر الشهر/الأشهر:</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',maxWidth:400}}>
+                {availableMonths.length === 0 ? (
+                  <span style={{fontSize:12,color:'#9ca3af'}}>لا توجد بيانات بعد</span>
+                ) : availableMonths.map(m => (
+                  <button key={m} onClick={()=>toggleMonth(m)}
+                    style={{padding:'6px 12px',borderRadius:8,border:selectedMonths.includes(m)?'2px solid #1e40af':'1px solid #d1d5db',
+                      background:selectedMonths.includes(m)?'#dbeafe':'#fff',color:selectedMonths.includes(m)?'#1e40af':'#6b7280',
+                      cursor:'pointer',fontSize:12,fontWeight:600}}>
+                    {monthLabel(m)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:8}}>اختر موظفين (اختياري - افتراضي: الجميع):</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',maxWidth:500,maxHeight:90,overflowY:'auto'}}>
+                {employees.map(emp => (
+                  <button key={emp.id} onClick={()=>toggleEmployeeSelect(emp.id)}
+                    style={{padding:'5px 10px',borderRadius:8,border:selectedEmployeeIds.includes(emp.id)?'2px solid #7c3aed':'1px solid #d1d5db',
+                      background:selectedEmployeeIds.includes(emp.id)?'#ede9fe':'#fff',color:selectedEmployeeIds.includes(emp.id)?'#7c3aed':'#6b7280',
+                      cursor:'pointer',fontSize:11,fontWeight:600}}>
+                    {emp.name}
+                  </button>
+                ))}
+              </div>
+              {selectedEmployeeIds.length > 0 && (
+                <button onClick={()=>setSelectedEmployeeIds([])} style={{marginTop:6,background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:11}}>
+                  إلغاء التحديد ({selectedEmployeeIds.length})
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* محتوى الطباعة */}
+          <div ref={printRef} style={{display:'none'}}>
+            <div className="header">
+              <div className="company-name">Sanya International Company</div>
+              <div className="report-title">الموقف الشهري — {selectedMonths.map(monthLabel).join(' ، ')}</div>
+              <div className="report-date">تاريخ الطباعة: {new Date().toLocaleDateString('ar-IQ')}</div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>الاسم</th><th>الشهر</th><th>أيام الدوام</th><th>روتيشن</th><th>أيام الجمعة</th>
+                  <th>الغياب</th><th>مرضية</th><th>طارئة</th><th>اعتيادية</th><th>عطلة رسمية</th><th>المجموع</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMonthlySummary.map((row, idx) => (
+                  <tr key={idx}>
+                    <td>{row['الاسم']}</td>
+                    <td>{monthLabel(row['الشهر'])}</td>
+                    <td className="present">{row['أيام الدوام']}</td>
+                    <td>{row['روتيشن']}</td>
+                    <td>{row['ايام الجمعه']}</td>
+                    <td className="absent">{row['عدد ايام الغياب']}</td>
+                    <td>{row['إجازة مرضية']}</td>
+                    <td>{row['إجازة طارئة']}</td>
+                    <td>{row['إجازة اعتيادية']}</td>
+                    <td>{row['عطلة رسمية']}</td>
+                    <td className="total-col">{row['مجموع الايام']}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* تفاصيل يومية لموظف واحد محدد */}
+            {selectedEmployeeIds.length === 1 && dailyDetails[selectedEmployeeIds[0]] && (
+              <div>
+                <div className="report-title" style={{marginTop:20,marginBottom:10}}>التفاصيل اليومية</div>
+                <table>
+                  <thead>
+                    <tr><th>التاريخ</th><th>الحالة</th><th>دخول</th><th>خروج</th><th>ملاحظات</th></tr>
+                  </thead>
+                  <tbody>
+                    {dailyDetails[selectedEmployeeIds[0]].map((d,i) => (
+                      <tr key={i}>
+                        <td>{d.record_date}</td>
+                        <td>{d.status}</td>
+                        <td>{d.check_in || '—'}</td>
+                        <td>{d.check_out || '—'}</td>
+                        <td>{d.notes || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — {new Date().toLocaleDateString('ar-IQ')}</div>
+          </div>
+
+          {selectedMonths.length === 0 ? (
+            <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>اختر شهراً لعرض البيانات</div>
+          ) : loading ? (
+            <div style={{textAlign:'center',padding:'3rem',color:'#6b7280',fontSize:14}}>جارٍ تحميل البيانات...</div>
+          ) : filteredMonthlySummary.length === 0 ? (
+            <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>لا توجد بيانات لهذا الاختيار</div>
+          ) : (
+            <div>
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:14}}>
+                  <thead>
+                    <tr style={{background:'#f3f4f6'}}>
+                      {monthlyCols.map(h=>(
+                        <th key={h} style={{padding:'12px 16px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredMonthlySummary.map((row,idx)=>(
+                      <tr key={idx} style={{borderBottom:'1px solid #e5e7eb'}}>
+                        <td style={{padding:'12px 16px',fontWeight:600,color:'#111827'}}>{row['الاسم']}</td>
+                        <td style={{padding:'12px 16px',color:'#6b7280'}}>{monthLabel(row['الشهر'])}</td>
+                        <td style={{padding:'12px 16px',textAlign:'center',color:'#15803d',fontWeight:700}}>{row['أيام الدوام']}</td>
+                        <td style={{padding:'12px 16px',textAlign:'center',color:'#0891b2'}}>{row['روتيشن']}</td>
+                        <td style={{padding:'12px 16px',textAlign:'center',color:'#1d4ed8'}}>{row['ايام الجمعه']}</td>
+                        <td style={{padding:'12px 16px',textAlign:'center',color:'#dc2626',fontWeight:700}}>{row['عدد ايام الغياب']}</td>
+                        <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة مرضية']}</td>
+                        <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة طارئة']}</td>
+                        <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة اعتيادية']}</td>
+                        <td style={{padding:'12px 16px',textAlign:'center'}}>{row['عطلة رسمية']}</td>
+                        <td style={{padding:'12px 16px',textAlign:'center',fontWeight:700,background:'#f9fafb'}}>{row['مجموع الايام']}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* التفاصيل اليومية لموظف واحد */}
+              {selectedEmployeeIds.length === 1 && dailyDetails[selectedEmployeeIds[0]] && dailyDetails[selectedEmployeeIds[0]].length > 0 && (
+                <div style={{marginTop:8}}>
+                  <div style={{padding:'12px 20px',background:'#eff6ff',borderTop:'1px solid #dbeafe',borderBottom:'1px solid #dbeafe'}}>
+                    <span style={{fontSize:14,color:'#1d4ed8',fontWeight:600}}>التفاصيل اليومية — {employees.find(e=>e.id===selectedEmployeeIds[0])?.name}</span>
+                  </div>
+                  <div style={{overflowX:'auto'}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                      <thead>
+                        <tr style={{background:'#f3f4f6'}}>
+                          {['التاريخ','الحالة','دخول','خروج','ملاحظات'].map(h=>(
+                            <th key={h} style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dailyDetails[selectedEmployeeIds[0]].map((d,i)=>(
+                          <tr key={i} style={{borderBottom:'1px solid #e5e7eb'}}>
+                            <td style={{padding:'10px 14px',color:'#374151'}}>{d.record_date}</td>
+                            <td style={{padding:'10px 14px'}}>
+                              <span style={{...statusColor(d.status),padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600}}>{d.status}</span>
+                            </td>
+                            <td style={{padding:'10px 14px',color:'#6b7280'}}>{d.check_in || '—'}</td>
+                            <td style={{padding:'10px 14px',color:'#6b7280'}}>{d.check_out || '—'}</td>
+                            <td style={{padding:'10px 14px',color:'#6b7280'}}>{d.notes || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
