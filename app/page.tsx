@@ -23,8 +23,37 @@ export default function Home() {
   const [userRole, setUserRole] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<string | null>(null)
   const [financeTab, setFinanceTab] = useState<'expenses' | 'receipts'>('expenses')
+  const [visaAlerts, setVisaAlerts] = useState<{ touristViolated: number; touristWarning: number; annualViolated: number; annualWarning: number }>({ touristViolated: 0, touristWarning: 0, annualViolated: 0, annualWarning: 0 })
 
   useEffect(() => { if (user) loadRole() }, [user])
+
+  useEffect(() => {
+    if (userRole === 'editor' || userRole === 'admin') loadVisaAlerts()
+  }, [userRole])
+
+  async function loadVisaAlerts() {
+    const today = new Date(); today.setHours(0,0,0,0)
+    const { data: tourist } = await supabase.from('tourist_visas').select('expiry_date, status')
+    const { data: annual } = await supabase.from('annual_visas').select('expiry_date, status')
+
+    let touristViolated = 0, touristWarning = 0, annualViolated = 0, annualWarning = 0
+
+    ;(tourist || []).forEach((v: { expiry_date: string; status: string }) => {
+      const expiry = new Date(v.expiry_date); expiry.setHours(0,0,0,0)
+      const days = Math.ceil((expiry.getTime() - today.getTime()) / (1000*60*60*24))
+      if (days <= 0 || v.status === 'violated') touristViolated++
+      else if (days <= 7) touristWarning++
+    })
+
+    ;(annual || []).forEach((v: { expiry_date: string; status: string }) => {
+      const expiry = new Date(v.expiry_date); expiry.setHours(0,0,0,0)
+      const days = Math.ceil((expiry.getTime() - today.getTime()) / (1000*60*60*24))
+      if (days <= 0 || v.status === 'violated') annualViolated++
+      else if (days <= 120) annualWarning++
+    })
+
+    setVisaAlerts({ touristViolated, touristWarning, annualViolated, annualWarning })
+  }
 
   async function login() {
     setLoading(true)
@@ -166,6 +195,43 @@ export default function Home() {
             <h1 style={{fontSize:30,fontWeight:700,color:'#0f2557',margin:'0 0 6px',letterSpacing:0.3}}>Sanya International Company</h1>
             <p style={{fontSize:15,color:'#6b7280',margin:0}}>اختر القسم الذي تريد الدخول إليه</p>
           </div>
+
+          {/* بطاقة التنبيهات الموحدة */}
+          {(userRole === 'editor' || userRole === 'admin') && (() => {
+            const totalViolated = visaAlerts.touristViolated + visaAlerts.annualViolated
+            const totalWarning = visaAlerts.touristWarning + visaAlerts.annualWarning
+            if (totalViolated === 0 && totalWarning === 0) return null
+            return (
+              <div style={{background:'#fff',border:'1px solid #fecaca',borderRadius:16,padding:'20px 24px',marginBottom:32,boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+                  <span style={{width:10,height:10,borderRadius:'50%',background:'#dc2626',display:'inline-block'}}></span>
+                  <h2 style={{margin:0,fontSize:16,fontWeight:700,color:'#111827'}}>التنبيهات</h2>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
+                  {visaAlerts.touristViolated > 0 && (
+                    <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                      <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{visaAlerts.touristViolated} مخالف — تأشيرة سياحية منتهية</div>
+                    </button>
+                  )}
+                  {visaAlerts.touristWarning > 0 && (
+                    <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fef9c3',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                      <div style={{fontSize:13,color:'#b45309',fontWeight:700}}>{visaAlerts.touristWarning} تأشيرة سياحية تنتهي قريباً (أقل من 7 أيام)</div>
+                    </button>
+                  )}
+                  {visaAlerts.annualViolated > 0 && (
+                    <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                      <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{visaAlerts.annualViolated} مخالف — تأشيرة سنوية منتهية</div>
+                    </button>
+                  )}
+                  {visaAlerts.annualWarning > 0 && (
+                    <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fef9c3',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                      <div style={{fontSize:13,color:'#b45309',fontWeight:700}}>{visaAlerts.annualWarning} تأشيرة سنوية تنتهي قريباً (أقل من 4 أشهر)</div>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* بطاقات الأقسام */}
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:20}}>
