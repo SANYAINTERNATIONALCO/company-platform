@@ -71,6 +71,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
+  const printDetailRef = useRef<HTMLDivElement>(null)
 
   // فلترة
   const [searchName, setSearchName] = useState('')
@@ -253,12 +254,29 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
     }))
   }
 
-  function selectAllPresent() {
+  function selectAllStatus(status: string) {
     const updated = { ...records }
     filteredEmployees.forEach(emp => {
-      updated[emp.id] = { ...updated[emp.id], status: 'حاضر' }
+      updated[emp.id] = { ...updated[emp.id], status }
     })
     setRecords(updated)
+  }
+
+  async function deleteEmployeeRecord(empId: string) {
+    if (!confirm('هل أنت متأكد من حذف سجل هذا الموظف لهذا اليوم؟')) return
+    await supabase.from('attendance_records').delete().eq('employee_id', empId).eq('record_date', selectedDate)
+    await loadDailyRecords(selectedDate)
+    await loadAvailableMonths()
+  }
+
+  async function deleteFullDayRecords() {
+    if (!confirm('هل أنت متأكد من حذف سجلات جميع الموظفين لهذا اليوم بالكامل؟ لا يمكن التراجع عن هذا الإجراء.')) return
+    setSaving(true)
+    await supabase.from('attendance_records').delete().eq('record_date', selectedDate)
+    await loadDailyRecords(selectedDate)
+    await loadAvailableMonths()
+    setSaving(false)
+    alert('تم حذف سجلات هذا اليوم بالكامل')
   }
 
   function handlePrintMonthly() {
@@ -289,6 +307,45 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
           .total-col { background: #eff6ff; font-weight: bold; color: #1e40af; }
           .absent { color: #dc2626; font-weight: bold; }
           .present { color: #15803d; font-weight: bold; }
+          .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ca3af; }
+          .signatures { display: flex; justify-content: space-between; margin-top: 60px; padding: 0 20px; }
+          .signature-box { text-align: center; min-width: 200px; }
+          .signature-line { border-top: 1px solid #111; margin-top: 50px; padding-top: 8px; font-size: 13px; font-weight: 600; color: #111827; }
+        </style>
+      </head>
+      <body>${printContent.innerHTML}</body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => { printWindow.print(); printWindow.close() }, 500)
+  }
+
+  function handlePrintDetailedReport() {
+    const printContent = printDetailRef.current
+    if (!printContent) return
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="UTF-8">
+        <title>التقرير المفصل</title>
+        <style>
+          @page { margin: 12mm; size: A4; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; direction: rtl; color: #111; padding: 0; }
+          .header { text-align: center; border-bottom: 3px solid #1e40af; padding-bottom: 16px; margin-bottom: 24px; }
+          .company-name { font-size: 22px; font-weight: bold; color: #1e40af; margin-bottom: 4px; }
+          .report-title { font-size: 16px; color: #374151; margin-bottom: 4px; }
+          .report-date { font-size: 13px; color: #6b7280; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
+          th { background: #1e40af; color: #fff; padding: 9px 10px; text-align: center; font-weight: 600; white-space: nowrap; }
+          th:first-child { text-align: right; }
+          td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; text-align: center; }
+          td:first-child { text-align: right; font-weight: 600; }
+          tr:nth-child(even) { background: #f9fafb; }
           .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ca3af; }
           .signatures { display: flex; justify-content: space-between; margin-top: 60px; padding: 0 20px; }
           .signature-box { text-align: center; min-width: 200px; }
@@ -404,9 +461,17 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
             </div>
             {!readOnly && (
               <>
-                <button onClick={selectAllPresent}
+                <select onChange={e=>{ if(e.target.value){ selectAllStatus(e.target.value); e.target.value='' } }}
+                  defaultValue=""
                   style={{background:'#dcfce7',color:'#15803d',border:'1px solid #86efac',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>
-                  تحديد الكل حاضر
+                  <option value="" disabled>تحديد الكل كـ...</option>
+                  <option value="حاضر">الكل حاضر</option>
+                  <option value="عطلة رسمية">الكل عطلة رسمية</option>
+                  <option value="يوم جمعة">الكل يوم جمعة</option>
+                </select>
+                <button onClick={deleteFullDayRecords} disabled={saving}
+                  style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  حذف سجلات اليوم
                 </button>
                 <button onClick={saveAll} disabled={saving || unsavedCount === 0}
                   style={{background:unsavedCount>0?'#16a34a':'#9ca3af',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:unsavedCount>0?'pointer':'default',fontSize:14,fontWeight:600}}>
@@ -430,6 +495,12 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
                   طباعة التقرير
                 </button>
               </>
+            )}
+            {selectedEmployeeIds.length === 1 && dailyDetails[selectedEmployeeIds[0]] && dailyDetails[selectedEmployeeIds[0]].length > 0 && (
+              <button onClick={handlePrintDetailedReport}
+                style={{background:'#ede9fe',color:'#7c3aed',border:'1px solid #c4b5fd',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                تقرير مفصل
+              </button>
             )}
           </div>
         )}
@@ -483,6 +554,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
                 <th style={{padding:'10px 14px',textAlign:'center',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>دخول</th>
                 <th style={{padding:'10px 14px',textAlign:'center',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>خروج</th>
                 <th style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',minWidth:160}}>ملاحظات</th>
+                {!readOnly && <th style={{padding:'10px 14px',borderBottom:'2px solid #e5e7eb'}}></th>}
               </tr>
             </thead>
             <tbody>
@@ -530,6 +602,16 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
                           style={{padding:'6px 10px',borderRadius:6,border:'1px solid #d1d5db',fontSize:12,color:'#111827',width:'100%',boxSizing:'border-box'}}/>
                       )}
                     </td>
+                    {!readOnly && (
+                      <td style={{padding:'10px 14px'}}>
+                        {savedRecords[emp.id] && (
+                          <button onClick={()=>deleteEmployeeRecord(emp.id)}
+                            style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>
+                            حذف
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 )
               })}
@@ -644,29 +726,6 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
                 ))}
               </tbody>
             </table>
-
-            {/* تفاصيل يومية لموظف واحد محدد */}
-            {selectedEmployeeIds.length === 1 && dailyDetails[selectedEmployeeIds[0]] && (
-              <div>
-                <div className="report-title" style={{marginTop:20,marginBottom:10}}>التفاصيل اليومية</div>
-                <table>
-                  <thead>
-                    <tr><th>التاريخ</th><th>الحالة</th><th>دخول</th><th>خروج</th><th>ملاحظات</th></tr>
-                  </thead>
-                  <tbody>
-                    {dailyDetails[selectedEmployeeIds[0]].map((d,i) => (
-                      <tr key={i}>
-                        <td>{d.record_date}</td>
-                        <td>{d.status}</td>
-                        <td>{d.check_in || '—'}</td>
-                        <td>{d.check_out || '—'}</td>
-                        <td>{d.notes || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
             <div className="signatures">
               <div className="signature-box">
                 <div className="signature-line">مدير قسم الموارد البشرية</div>
@@ -677,6 +736,42 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
             </div>
             <div className="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — {new Date().toLocaleDateString('ar-IQ')}</div>
           </div>
+
+          {/* محتوى الطباعة - التقرير المفصل لموظف واحد */}
+          {selectedEmployeeIds.length === 1 && dailyDetails[selectedEmployeeIds[0]] && (
+            <div ref={printDetailRef} style={{display:'none'}}>
+              <div className="header">
+                <div className="company-name">Sanya International Company</div>
+                <div className="report-title">تقرير مفصل — {employees.find(e=>e.id===selectedEmployeeIds[0])?.name}</div>
+                <div className="report-date">الأشهر: {selectedMonths.map(monthLabel).join(' ، ')} — تاريخ الطباعة: {new Date().toLocaleDateString('ar-IQ')}</div>
+              </div>
+              <table>
+                <thead>
+                  <tr><th>التاريخ</th><th>الحالة</th><th>دخول</th><th>خروج</th><th>ملاحظات</th></tr>
+                </thead>
+                <tbody>
+                  {dailyDetails[selectedEmployeeIds[0]].map((d,i) => (
+                    <tr key={i}>
+                      <td>{d.record_date}</td>
+                      <td>{d.status}</td>
+                      <td>{d.check_in || '—'}</td>
+                      <td>{d.check_out || '—'}</td>
+                      <td>{d.notes || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="signatures">
+                <div className="signature-box">
+                  <div className="signature-line">مدير قسم الموارد البشرية</div>
+                </div>
+                <div className="signature-box">
+                  <div className="signature-line">مدير الموقع</div>
+                </div>
+              </div>
+              <div className="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — {new Date().toLocaleDateString('ar-IQ')}</div>
+            </div>
+          )}
 
           {selectedMonths.length === 0 ? (
             <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>اختر شهراً لعرض البيانات</div>

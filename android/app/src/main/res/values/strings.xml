@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Sanya International</string>
+    <string name="title_activity_main">Sanya International</string>
+    <string name="package_name">com.sanya.platform</string>
+    <string name="custom_url_scheme">com.sanya.platform</string>
+</resources>
