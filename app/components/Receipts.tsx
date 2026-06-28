@@ -16,6 +16,7 @@ interface BaseReceipt {
   receipt_date: string
   amount: number
   created_at: string
+  attachment_url?: string | null
 }
 
 interface FuelReceipt extends BaseReceipt {
@@ -116,6 +117,8 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const printRef = useRef<HTMLDivElement>(null)
   const [lastPrintedReceipt, setLastPrintedReceipt] = useState<any>(null)
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
@@ -124,6 +127,10 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
   const [fuelForm, setFuelForm] = useState({ fund_code: '', driver_name: '', receiver_name: '', vehicle_number: '', receipt_date: '', product_type: '', quantity: '', amount: '' })
   const [maintForm, setMaintForm] = useState({ fund_code: '', receipt_date: '', vehicle_type: '', vehicle_number: '', odometer_reading: '', owner_name: '', maintenance_type: '', workshop_name: '', amount: '' })
   const [deliveryForm, setDeliveryForm] = useState({ fund_code: '', receipt_date: '', receiver_name: '', id_number: '', amount: '', details: '' })
+  const [fuelAttachment, setFuelAttachment] = useState<File | null>(null)
+  const [maintAttachment, setMaintAttachment] = useState<File | null>(null)
+  const [deliveryAttachment, setDeliveryAttachment] = useState<File | null>(null)
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -175,11 +182,26 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
     return data as string
   }
 
+  async function uploadAttachment(file: File, prefix: string): Promise<string | null> {
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${prefix}_${Date.now()}.${fileExt}`
+    const { data, error } = await supabase.storage.from('receipt-attachments').upload(fileName, file)
+    if (error) { alert('خطأ في رفع المرفق: ' + error.message); return null }
+    const { data: urlData } = supabase.storage.from('receipt-attachments').getPublicUrl(data.path)
+    return urlData.publicUrl
+  }
+
   async function saveFuelReceipt(shouldPrint: boolean) {
     if (!fuelForm.driver_name || !fuelForm.receiver_name || !fuelForm.vehicle_number || !fuelForm.product_type || !fuelForm.quantity || !fuelForm.amount) {
       alert('يرجى تعبئة جميع الحقول المطلوبة'); return
     }
     setLoading(true)
+    let attachmentUrl: string | null = null
+    if (fuelAttachment) {
+      setUploadingAttachment(true)
+      attachmentUrl = await uploadAttachment(fuelAttachment, 'fuel')
+      setUploadingAttachment(false)
+    }
     const receiptNumber = await getNextReceiptNumber('P')
     const { data, error } = await supabase.from('fuel_receipts').insert([{
       receipt_number: receiptNumber,
@@ -190,12 +212,14 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
       receipt_date: fuelForm.receipt_date,
       product_type: fuelForm.product_type,
       quantity: parseFloat(fuelForm.quantity),
-      amount: parseFloat(fuelForm.amount)
+      amount: parseFloat(fuelForm.amount),
+      attachment_url: attachmentUrl
     }]).select().single()
     if (error) alert('خطأ: ' + error.message)
     else {
       setLastPrintedReceipt({ type: 'fuel', ...data })
       setFuelForm({ ...fuelForm, driver_name:'', receiver_name:'', vehicle_number:'', product_type:'', quantity:'', amount:'' })
+      setFuelAttachment(null)
       setShowForm(false)
       loadAllReceipts()
       if (shouldPrint) setTimeout(()=>printReceipt({ type: 'fuel', ...data }), 300)
@@ -208,6 +232,12 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
       alert('يرجى تعبئة جميع الحقول المطلوبة'); return
     }
     setLoading(true)
+    let attachmentUrl: string | null = null
+    if (maintAttachment) {
+      setUploadingAttachment(true)
+      attachmentUrl = await uploadAttachment(maintAttachment, 'maintenance')
+      setUploadingAttachment(false)
+    }
     const receiptNumber = await getNextReceiptNumber('C')
     const { data, error } = await supabase.from('maintenance_receipts').insert([{
       receipt_number: receiptNumber,
@@ -219,12 +249,14 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
       owner_name: maintForm.owner_name,
       maintenance_type: maintForm.maintenance_type,
       workshop_name: maintForm.workshop_name,
-      amount: parseFloat(maintForm.amount)
+      amount: parseFloat(maintForm.amount),
+      attachment_url: attachmentUrl
     }]).select().single()
     if (error) alert('خطأ: ' + error.message)
     else {
       setLastPrintedReceipt({ type: 'maintenance', ...data })
       setMaintForm({ ...maintForm, vehicle_type:'', vehicle_number:'', odometer_reading:'', owner_name:'', maintenance_type:'', workshop_name:'', amount:'' })
+      setMaintAttachment(null)
       setShowForm(false)
       loadAllReceipts()
       if (shouldPrint) setTimeout(()=>printReceipt({ type: 'maintenance', ...data }), 300)
@@ -237,6 +269,12 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
       alert('يرجى تعبئة جميع الحقول المطلوبة'); return
     }
     setLoading(true)
+    let attachmentUrl: string | null = null
+    if (deliveryAttachment) {
+      setUploadingAttachment(true)
+      attachmentUrl = await uploadAttachment(deliveryAttachment, 'delivery')
+      setUploadingAttachment(false)
+    }
     const receiptNumber = await getNextReceiptNumber('M')
     const amountNum = parseFloat(deliveryForm.amount)
     const amountText = numberToArabicWords(amountNum)
@@ -248,12 +286,14 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
       id_number: deliveryForm.id_number,
       amount: amountNum,
       amount_text: amountText,
-      details: deliveryForm.details
+      details: deliveryForm.details,
+      attachment_url: attachmentUrl
     }]).select().single()
     if (error) alert('خطأ: ' + error.message)
     else {
       setLastPrintedReceipt({ type: 'delivery', ...data })
       setDeliveryForm({ ...deliveryForm, receiver_name:'', id_number:'', amount:'', details:'' })
+      setDeliveryAttachment(null)
       setShowForm(false)
       loadAllReceipts()
       if (shouldPrint) setTimeout(()=>printReceipt({ type: 'delivery', ...data }), 300)
@@ -387,15 +427,25 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
   }, [fuelReceipts, maintenanceReceipts, deliveryReceipts])
 
   const filteredSearch = useMemo(() => {
-    if (!searchTerm.trim()) return allReceiptsForSearch
-    const term = searchTerm.toLowerCase()
-    return allReceiptsForSearch.filter(r =>
-      r.receipt_number.toLowerCase().includes(term) ||
-      (r.fund_code || '').toLowerCase().includes(term) ||
-      r.displayName.toLowerCase().includes(term) ||
-      r.typeLabel.includes(term)
-    )
-  }, [allReceiptsForSearch, searchTerm])
+    let results = allReceiptsForSearch
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase()
+      results = results.filter(r =>
+        r.receipt_number.toLowerCase().includes(term) ||
+        (r.fund_code || '').toLowerCase().includes(term) ||
+        r.displayName.toLowerCase().includes(term) ||
+        r.typeLabel.includes(term)
+      )
+    }
+    if (dateFrom) {
+      results = results.filter(r => new Date(r.receipt_date) >= new Date(dateFrom))
+    }
+    if (dateTo) {
+      const toDate = new Date(dateTo); toDate.setHours(23,59,59,999)
+      results = results.filter(r => new Date(r.receipt_date) <= toDate)
+    }
+    return results
+  }, [allReceiptsForSearch, searchTerm, dateFrom, dateTo])
 
   const currentTypeInfo = receiptTypes.find(t => t.key === activeType)!
 
@@ -460,6 +510,12 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
                 <input type="number" value={fuelForm.quantity} onChange={e=>setFuelForm({...fuelForm,quantity:e.target.value})} style={inputStyle}/></div>
               <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>المبلغ (د.ع) *</label>
                 <input type="number" value={fuelForm.amount} onChange={e=>setFuelForm({...fuelForm,amount:e.target.value})} style={inputStyle}/></div>
+              <div style={{gridColumn:'span 2'}}>
+                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>مرفق الفاتورة (اختياري)</label>
+                <input type="file" accept="image/*,.pdf" onChange={e=>setFuelAttachment(e.target.files?.[0] || null)}
+                  style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#111827',background:'#fff',marginBottom:10}}/>
+                {fuelAttachment && <span style={{fontSize:11,color:'#15803d'}}>تم اختيار: {fuelAttachment.name}</span>}
+              </div>
             </div>
             <div style={{display:'flex',gap:10}}>
               <button onClick={()=>saveFuelReceipt(false)} disabled={loading}
@@ -500,6 +556,12 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
                 <input value={maintForm.workshop_name} onChange={e=>setMaintForm({...maintForm,workshop_name:e.target.value})} style={inputStyle}/></div>
               <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>المبلغ (د.ع) *</label>
                 <input type="number" value={maintForm.amount} onChange={e=>setMaintForm({...maintForm,amount:e.target.value})} style={inputStyle}/></div>
+              <div style={{gridColumn:'span 2'}}>
+                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>مرفق الفاتورة (اختياري)</label>
+                <input type="file" accept="image/*,.pdf" onChange={e=>setMaintAttachment(e.target.files?.[0] || null)}
+                  style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#111827',background:'#fff',marginBottom:10}}/>
+                {maintAttachment && <span style={{fontSize:11,color:'#15803d'}}>تم اختيار: {maintAttachment.name}</span>}
+              </div>
             </div>
             <div style={{display:'flex',gap:10}}>
               <button onClick={()=>saveMaintenanceReceipt(false)} disabled={loading}
@@ -537,6 +599,12 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
                   style={{...inputStyle,background:'#f3f4f6',color:'#6b7280'}}/></div>
               <div style={{gridColumn:'span 2'}}><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تفاصيل المبلغ</label>
                 <input value={deliveryForm.details} onChange={e=>setDeliveryForm({...deliveryForm,details:e.target.value})} placeholder="سبب التسليم..." style={inputStyle}/></div>
+              <div style={{gridColumn:'span 2'}}>
+                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>مرفق (اختياري)</label>
+                <input type="file" accept="image/*,.pdf" onChange={e=>setDeliveryAttachment(e.target.files?.[0] || null)}
+                  style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#111827',background:'#fff',marginBottom:10}}/>
+                {deliveryAttachment && <span style={{fontSize:11,color:'#15803d'}}>تم اختيار: {deliveryAttachment.name}</span>}
+              </div>
             </div>
             <div style={{display:'flex',gap:10}}>
               <button onClick={()=>saveDeliveryReceipt(false)} disabled={loading}
@@ -554,14 +622,24 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
 
       {/* قائمة الوصولات مع البحث */}
       <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
-        <div style={{padding:'14px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',gap:12}}>
+        <div style={{padding:'14px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
           <input
             placeholder="بحث برقم الوصل، كود السلفة، الاسم، أو نوع الوصل..."
             value={searchTerm}
             onChange={e=>setSearchTerm(e.target.value)}
-            style={{flex:1,padding:'9px 14px',borderRadius:8,border:'2px solid #d1d5db',fontSize:13,color:'#111827'}}/>
-          {searchTerm && (
-            <button onClick={()=>setSearchTerm('')} style={{background:'#f3f4f6',color:'#6b7280',border:'none',borderRadius:8,padding:'9px 14px',cursor:'pointer',fontSize:12}}>مسح</button>
+            style={{flex:1,minWidth:200,padding:'9px 14px',borderRadius:8,border:'2px solid #d1d5db',fontSize:13,color:'#111827'}}/>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <label style={{fontSize:12,color:'#6b7280',whiteSpace:'nowrap'}}>من:</label>
+            <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+              style={{padding:'8px 10px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#111827'}}/>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <label style={{fontSize:12,color:'#6b7280',whiteSpace:'nowrap'}}>إلى:</label>
+            <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+              style={{padding:'8px 10px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#111827'}}/>
+          </div>
+          {(searchTerm || dateFrom || dateTo) && (
+            <button onClick={()=>{setSearchTerm('');setDateFrom('');setDateTo('')}} style={{background:'#f3f4f6',color:'#6b7280',border:'none',borderRadius:8,padding:'9px 14px',cursor:'pointer',fontSize:12}}>مسح</button>
           )}
           <span style={{fontSize:12,color:'#9ca3af',whiteSpace:'nowrap'}}>{filteredSearch.length} وصل</span>
         </div>
@@ -575,7 +653,7 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
               <thead>
                 <tr style={{background:'#f3f4f6'}}>
-                  {['رقم الوصل','النوع','كود السلفة','الاسم','المبلغ','التاريخ',''].map(h=>(
+                  {['رقم الوصل','النوع','كود السلفة','الاسم','المبلغ','التاريخ','مرفق',''].map(h=>(
                     <th key={h} style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
                   ))}
                 </tr>
@@ -593,6 +671,13 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
                       <td style={{padding:'10px 14px',color:'#111827',fontWeight:500}}>{r.displayName}</td>
                       <td style={{padding:'10px 14px',color:'#dc2626',fontWeight:700}}>{formatAmount(r.amount)}</td>
                       <td style={{padding:'10px 14px',color:'#6b7280',fontSize:12}}>{formatDateTime(r.receipt_date)}</td>
+                      <td style={{padding:'10px 14px'}}>
+                        {r.attachment_url ? (
+                          <a href={r.attachment_url} target="_blank" rel="noreferrer" style={{fontSize:12,color:'#1d4ed8',textDecoration:'none',fontWeight:600}}>عرض</a>
+                        ) : (
+                          <span style={{fontSize:12,color:'#d1d5db'}}>—</span>
+                        )}
+                      </td>
                       <td style={{padding:'10px 14px'}}>
                         <div style={{display:'flex',gap:6}}>
                           <button onClick={()=>printReceipt(r)}
