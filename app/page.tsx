@@ -6,6 +6,7 @@ import Finance from './components/Finance'
 import Receipts from './components/Receipts'
 import Visa from './components/Visa'
 import Employees from './components/Employees'
+import Payroll from './components/Payroll'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -85,6 +86,7 @@ export default function Home() {
     { id: 'employees', label: 'الموظفين', desc: 'سجلات وملفات الموظفين', icon: 'EMP', color: '#7c3aed', bg: '#ede9fe', show: ['editor','admin'] },
     { id: 'attendance', label: 'الحضور', desc: 'التسجيل اليومي والموقف الشهري', icon: 'ATT', color: '#1e40af', bg: '#dbeafe', show: ['editor','admin'] },
     { id: 'finance', label: 'الحسابات', desc: 'المصاريف والوصولات', icon: 'FIN', color: '#15803d', bg: '#dcfce7', show: ['editor','admin','accountant'] },
+    { id: 'payroll', label: 'الرواتب', desc: 'كشوف رواتب الموظفين الشهرية', icon: 'PAY', color: '#0891b2', bg: '#cffafe', show: ['editor','admin'] },
     { id: 'visa', label: 'التأشيرات', desc: 'إحصائيات الأجانب والتأشيرات السياحية', icon: 'VISA', color: '#b45309', bg: '#fef9c3', show: ['editor','admin'] },
   ]
 
@@ -119,6 +121,14 @@ export default function Home() {
           <rect x="2.5" y="5.5" width="19" height="13" rx="2" stroke={color} strokeWidth="1.8"/>
           <circle cx="8" cy="12" r="2.2" stroke={color} strokeWidth="1.6"/>
           <path d="M13.5 10h6M13.5 14h4" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+        </svg>
+      ),
+      PAY: (
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="6" width="18" height="13" rx="2" stroke={color} strokeWidth="1.8"/>
+          <path d="M3 10h18" stroke={color} strokeWidth="1.8"/>
+          <circle cx="8" cy="14.5" r="1.6" fill={color}/>
+          <path d="M13 14.5h5" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
         </svg>
       ),
     }
@@ -257,6 +267,7 @@ export default function Home() {
       {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
       {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} />}
       {activeSection === 'visa' && <Visa readOnly={isReadOnly} />}
+      {activeSection === 'payroll' && <Payroll readOnly={isReadOnly} />}
 
       {/* قسم الحسابات: مصاريف + وصولات */}
       {activeSection === 'finance' && (
