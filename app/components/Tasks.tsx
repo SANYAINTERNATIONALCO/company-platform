@@ -43,9 +43,10 @@ const statusInfo: Record<string,{label:string,bg:string,color:string}> = {
 }
 
 export default function Tasks({ currentUserId, currentUserRole, currentUserEmail }: { currentUserId: string; currentUserRole: string; currentUserEmail: string }) {
-  const [activeTab, setActiveTab] = useState<'my' | 'created'>('my')
+  const [activeTab, setActiveTab] = useState<'my' | 'created' | 'all'>('my')
   const [myTasks, setMyTasks] = useState<Task[]>([])
   const [createdTasks, setCreatedTasks] = useState<Task[]>([])
+  const [allTasks, setAllTasks] = useState<Task[]>([])
   const [allUsers, setAllUsers] = useState<AssignableUser[]>([])
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -56,6 +57,7 @@ export default function Tasks({ currentUserId, currentUserRole, currentUserEmail
     loadAllUsers()
     loadMyTasks()
     loadCreatedTasks()
+    loadAllTasks()
   }, [])
 
   async function loadAllUsers() {
@@ -80,6 +82,11 @@ export default function Tasks({ currentUserId, currentUserRole, currentUserEmail
     setCreatedTasks((data as Task[]) || [])
   }
 
+  async function loadAllTasks() {
+    const { data } = await supabase.from('tasks').select('*').order('created_at', { ascending: false })
+    setAllTasks((data as Task[]) || [])
+  }
+
   // من يقدر هذا المستخدم يكلّف حسب الهرمية
   const assignableUsers = useMemo(() => {
     if (currentUserRole === 'admin') return allUsers.filter(u => u.id !== currentUserId)
@@ -88,6 +95,7 @@ export default function Tasks({ currentUserId, currentUserRole, currentUserEmail
   }, [allUsers, currentUserRole, currentUserId])
 
   const canCreateTasks = assignableUsers.length > 0
+  const canSeeAll = currentUserRole === 'editor' || currentUserRole === 'admin'
 
   async function createTask() {
     if (!form.title || !form.assigned_to) { alert('يرجى تعبئة العنوان وتحديد الشخص المكلَّف'); return }
@@ -110,6 +118,7 @@ export default function Tasks({ currentUserId, currentUserRole, currentUserEmail
       setForm({ title: '', description: '', assigned_to: '', priority: 'normal', due_date: '' })
       setShowForm(false)
       loadCreatedTasks()
+      loadAllTasks()
     }
     setLoading(false)
   }
@@ -119,17 +128,20 @@ export default function Tasks({ currentUserId, currentUserRole, currentUserEmail
     if (status === 'completed') updates.completed_at = new Date().toISOString()
     await supabase.from('tasks').update(updates).eq('id', taskId)
     loadMyTasks()
+    loadAllTasks()
   }
 
   async function markAsSeen(taskId: string) {
     await supabase.from('tasks').update({ is_seen: true }).eq('id', taskId)
     loadMyTasks()
+    loadAllTasks()
   }
 
   async function deleteTask(taskId: string) {
     if (!confirm('هل أنت متأكد من حذف هذه المهمة؟')) return
     await supabase.from('tasks').delete().eq('id', taskId)
     loadCreatedTasks()
+    loadAllTasks()
   }
 
   const filteredMyTasks = useMemo(() => {
@@ -168,6 +180,14 @@ export default function Tasks({ currentUserId, currentUserRole, currentUserEmail
               background:activeTab==='created'?'#fff':'transparent',color:activeTab==='created'?'#1e40af':'#6b7280',
               boxShadow:activeTab==='created'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
             المهام التي أنشأتها
+          </button>
+        )}
+        {canSeeAll && (
+          <button onClick={()=>setActiveTab('all')}
+            style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+              background:activeTab==='all'?'#fff':'transparent',color:activeTab==='all'?'#1e40af':'#6b7280',
+              boxShadow:activeTab==='all'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+            كل المهام في النظام
           </button>
         )}
       </div>
@@ -314,6 +334,59 @@ export default function Tasks({ currentUserId, currentUserRole, currentUserEmail
                             style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600}}>
                             حذف
                           </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* تبويب كل المهام في النظام */}
+      {activeTab === 'all' && canSeeAll && (
+        <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
+          <div style={{padding:'14px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb'}}>
+            <h2 style={{margin:0,fontSize:16,fontWeight:700,color:'#111827'}}>كل المهام في النظام ({allTasks.length})</h2>
+          </div>
+          {allTasks.length === 0 ? (
+            <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>لا توجد أي مهام في النظام</div>
+          ) : (
+            <div style={{overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                <thead>
+                  <tr style={{background:'#f3f4f6'}}>
+                    {['العنوان','من','إلى','الأولوية','الحالة','تاريخ الاستحقاق','تاريخ الإنشاء',''].map(h=>(
+                      <th key={h} style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {allTasks.map(task => {
+                    const pInfo = priorityInfo[task.priority]
+                    const sInfo = statusInfo[task.status]
+                    const overdue = isOverdue(task)
+                    return (
+                      <tr key={task.id} style={{borderBottom:'1px solid #e5e7eb'}}>
+                        <td style={{padding:'10px 14px',fontWeight:600,color:'#111827'}}>{task.title}</td>
+                        <td style={{padding:'10px 14px',color:'#6b7280'}}>{task.created_by_name}</td>
+                        <td style={{padding:'10px 14px',color:'#6b7280'}}>{task.assigned_to_name}</td>
+                        <td style={{padding:'10px 14px'}}><span style={{background:pInfo.bg,color:pInfo.color,padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600}}>{pInfo.label}</span></td>
+                        <td style={{padding:'10px 14px'}}>
+                          <span style={{background:sInfo.bg,color:sInfo.color,padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600}}>{sInfo.label}</span>
+                          {overdue && <span style={{marginRight:6,background:'#fee2e2',color:'#dc2626',padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700}}>متأخرة</span>}
+                        </td>
+                        <td style={{padding:'10px 14px',color:'#6b7280'}}>{formatDate(task.due_date)}</td>
+                        <td style={{padding:'10px 14px',color:'#6b7280',fontSize:12}}>{formatDate(task.created_at)}</td>
+                        <td style={{padding:'10px 14px'}}>
+                          {task.created_by === currentUserId && (
+                            <button onClick={()=>deleteTask(task.id)}
+                              style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600}}>
+                              حذف
+                            </button>
+                          )}
                         </td>
                       </tr>
                     )
