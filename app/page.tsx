@@ -7,6 +7,7 @@ import Receipts from './components/Receipts'
 import Visa from './components/Visa'
 import Employees from './components/Employees'
 import Payroll from './components/Payroll'
+import Tasks from './components/Tasks'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -20,17 +21,34 @@ export default function Home() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [user, setUser] = useState<{ id: string } | null>(null)
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
   const [userRole, setUserRole] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<string | null>(null)
   const [financeTab, setFinanceTab] = useState<'expenses' | 'receipts'>('expenses')
   const [visaAlerts, setVisaAlerts] = useState<{ touristViolated: number; touristWarning: number; annualViolated: number; annualWarning: number }>({ touristViolated: 0, touristWarning: 0, annualViolated: 0, annualWarning: 0 })
+  const [taskAlerts, setTaskAlerts] = useState<{ unseen: number; overdue: number }>({ unseen: 0, overdue: 0 })
 
   useEffect(() => { if (user) loadRole() }, [user])
 
   useEffect(() => {
     if (userRole === 'editor' || userRole === 'admin') loadVisaAlerts()
   }, [userRole])
+
+  useEffect(() => {
+    if (user && userRole) loadTaskAlerts()
+  }, [user, userRole])
+
+  async function loadTaskAlerts() {
+    if (!user) return
+    const { data } = await supabase.from('tasks').select('is_seen, status, due_date').eq('assigned_to', user.id)
+    const today = new Date(new Date().toDateString())
+    let unseen = 0, overdue = 0
+    ;(data || []).forEach((t: any) => {
+      if (!t.is_seen) unseen++
+      if (t.status !== 'completed' && t.due_date && new Date(t.due_date) < today) overdue++
+    })
+    setTaskAlerts({ unseen, overdue })
+  }
 
   async function loadVisaAlerts() {
     const today = new Date(); today.setHours(0,0,0,0)
@@ -83,6 +101,7 @@ export default function Home() {
   const roleLabel: Record<string, string> = { editor: 'محرر', admin: 'مدير', accountant: 'محاسب' }
 
   const sections = [
+    { id: 'tasks', label: 'المهام', desc: 'مهامك ومتابعة التكليفات', icon: 'TASK', color: '#dc2626', bg: '#fee2e2', show: ['editor','admin','accountant'] },
     { id: 'employees', label: 'الموظفين', desc: 'سجلات وملفات الموظفين', icon: 'EMP', color: '#7c3aed', bg: '#ede9fe', show: ['editor','admin'] },
     { id: 'attendance', label: 'الحضور', desc: 'التسجيل اليومي والموقف الشهري', icon: 'ATT', color: '#1e40af', bg: '#dbeafe', show: ['editor','admin'] },
     { id: 'finance', label: 'الحسابات', desc: 'المصاريف والوصولات', icon: 'FIN', color: '#15803d', bg: '#dcfce7', show: ['editor','admin','accountant'] },
@@ -129,6 +148,13 @@ export default function Home() {
           <path d="M3 10h18" stroke={color} strokeWidth="1.8"/>
           <circle cx="8" cy="14.5" r="1.6" fill={color}/>
           <path d="M13 14.5h5" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+        </svg>
+      ),
+      TASK: (
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+          <rect x="4" y="3.5" width="16" height="17" rx="2" stroke={color} strokeWidth="1.8"/>
+          <path d="M8 8h8M8 12h8M8 16h5" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+          <path d="M7 3.5v-1M17 3.5v-1" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
         </svg>
       ),
     }
@@ -206,6 +232,28 @@ export default function Home() {
             <p style={{fontSize:15,color:'#6b7280',margin:0}}>اختر القسم الذي تريد الدخول إليه</p>
           </div>
 
+          {/* بطاقة تنبيهات المهام */}
+          {(taskAlerts.unseen > 0 || taskAlerts.overdue > 0) && (
+            <div style={{background:'#fff',border:'1px solid #bfdbfe',borderRadius:16,padding:'20px 24px',marginBottom:24,boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+                <span style={{width:10,height:10,borderRadius:'50%',background:'#2563eb',display:'inline-block'}}></span>
+                <h2 style={{margin:0,fontSize:16,fontWeight:700,color:'#111827'}}>المهام</h2>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
+                {taskAlerts.unseen > 0 && (
+                  <button onClick={()=>setActiveSection('tasks')} style={{textAlign:'right',background:'#eff6ff',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                    <div style={{fontSize:13,color:'#1d4ed8',fontWeight:700}}>{taskAlerts.unseen} مهمة جديدة لم تُفتح بعد</div>
+                  </button>
+                )}
+                {taskAlerts.overdue > 0 && (
+                  <button onClick={()=>setActiveSection('tasks')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                    <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{taskAlerts.overdue} مهمة متأخرة عن تاريخ الاستحقاق</div>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* بطاقة التنبيهات الموحدة */}
           {(userRole === 'editor' || userRole === 'admin') && (() => {
             const totalViolated = visaAlerts.touristViolated + visaAlerts.annualViolated
@@ -264,6 +312,9 @@ export default function Home() {
       )}
 
       {/* قسم الموظفين والحضور والتأشيرات */}
+      {activeSection === 'tasks' && user && userRole && (
+        <Tasks currentUserId={user.id} currentUserRole={userRole} currentUserEmail={user.email || ''} />
+      )}
       {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
       {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} />}
       {activeSection === 'visa' && <Visa readOnly={isReadOnly} />}
