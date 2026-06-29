@@ -30,7 +30,7 @@ interface AssignableUser {
   displayName: string
 }
 
-const roleLabel: Record<string,string> = { editor: 'محرر (مدير الموارد البشرية)', admin: 'مدير', accountant: 'محاسب' }
+const roleLabel: Record<string,string> = { editor: 'محرر (مدير الموارد البشرية)', admin: 'مدير', accountant: 'محاسب', guest_1: 'ضيف 1', guest_2: 'ضيف 2' }
 const priorityInfo: Record<string,{label:string,bg:string,color:string}> = {
   normal: { label: 'عادية', bg: '#f3f4f6', color: '#374151' },
   important: { label: 'مهمة', bg: '#fef9c3', color: '#b45309' },
@@ -95,7 +95,7 @@ export default function Tasks({ currentUserId, currentUserRole, currentUserEmail
   }, [allUsers, currentUserRole, currentUserId])
 
   const canCreateTasks = assignableUsers.length > 0
-  const canSeeAll = currentUserRole === 'editor' || currentUserRole === 'admin'
+  const canSeeAll = ['editor', 'admin', 'guest_1', 'guest_2'].includes(currentUserRole)
 
   async function createTask() {
     if (!form.title || !form.assigned_to) { alert('يرجى تعبئة العنوان وتحديد الشخص المكلَّف'); return }

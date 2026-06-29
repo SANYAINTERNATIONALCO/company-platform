@@ -97,16 +97,16 @@ export default function Home() {
     else setUserRole('viewer')
   }
 
-  const isReadOnly = userRole === 'admin'
-  const roleLabel: Record<string, string> = { editor: 'محرر', admin: 'مدير', accountant: 'محاسب' }
+  const isReadOnly = ['admin', 'guest_1', 'guest_2'].includes(userRole || '')
+  const roleLabel: Record<string, string> = { editor: 'محرر', admin: 'مدير', accountant: 'محاسب', guest_1: 'ضيف 1', guest_2: 'ضيف 2' }
 
   const sections = [
-    { id: 'tasks', label: 'المهام', desc: 'مهامك ومتابعة التكليفات', icon: 'TASK', color: '#dc2626', bg: '#fee2e2', show: ['editor','admin','accountant'] },
-    { id: 'employees', label: 'الموظفين', desc: 'سجلات وملفات الموظفين', icon: 'EMP', color: '#7c3aed', bg: '#ede9fe', show: ['editor','admin'] },
-    { id: 'attendance', label: 'الحضور', desc: 'التسجيل اليومي والموقف الشهري', icon: 'ATT', color: '#1e40af', bg: '#dbeafe', show: ['editor','admin'] },
-    { id: 'finance', label: 'الحسابات', desc: 'المصاريف والوصولات', icon: 'FIN', color: '#15803d', bg: '#dcfce7', show: ['editor','admin','accountant'] },
-    { id: 'payroll', label: 'الرواتب', desc: 'كشوف رواتب الموظفين الشهرية', icon: 'PAY', color: '#0891b2', bg: '#cffafe', show: ['editor','admin'] },
-    { id: 'visa', label: 'التأشيرات', desc: 'إحصائيات الأجانب والتأشيرات السياحية', icon: 'VISA', color: '#b45309', bg: '#fef9c3', show: ['editor','admin'] },
+    { id: 'tasks', label: 'المهام', desc: 'مهامك ومتابعة التكليفات', icon: 'TASK', color: '#dc2626', bg: '#fee2e2', show: ['editor','admin','accountant','guest_1','guest_2'] },
+    { id: 'employees', label: 'الموظفين', desc: 'سجلات وملفات الموظفين', icon: 'EMP', color: '#7c3aed', bg: '#ede9fe', show: ['editor','admin','guest_1','guest_2'] },
+    { id: 'attendance', label: 'الحضور', desc: 'التسجيل اليومي والموقف الشهري', icon: 'ATT', color: '#1e40af', bg: '#dbeafe', show: ['editor','admin','guest_1','guest_2'] },
+    { id: 'finance', label: 'الحسابات', desc: 'المصاريف والوصولات', icon: 'FIN', color: '#15803d', bg: '#dcfce7', show: ['editor','admin','accountant','guest_1','guest_2'] },
+    { id: 'payroll', label: 'الرواتب', desc: 'كشوف رواتب الموظفين الشهرية', icon: 'PAY', color: '#0891b2', bg: '#cffafe', show: ['editor','admin','guest_1','guest_2'] },
+    { id: 'visa', label: 'التأشيرات', desc: 'إحصائيات الأجانب والتأشيرات السياحية', icon: 'VISA', color: '#b45309', bg: '#fef9c3', show: ['editor','admin','guest_1','guest_2'] },
   ]
 
   const visibleSections = sections.filter(s => s.show.includes(userRole || ''))
