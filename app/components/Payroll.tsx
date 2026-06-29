@@ -204,6 +204,30 @@ export default function Payroll({ readOnly = false }: { readOnly?: boolean }) {
     alert('تم حفظ وأرشفة كشف رواتب شهر ' + monthLabel(selectedMonth) + ' بنجاح')
   }
 
+  async function deleteArchive() {
+    if (!confirm('هل أنت متأكد من حذف أرشفة كشف شهر ' + monthLabel(selectedMonth) + ' بالكامل؟ سيتم إرجاع أي استقطاع سلفة تم تطبيقه لهذا الشهر، ويمكن إعادة حساب وحفظ الشهر من جديد.')) return
+    setSaving(true)
+    // إرجاع تأثير استقطاع السلفة لكل موظف له سجل محفوظ بهذا الشهر
+    for (const emp of employees) {
+      const rec = savedRecords[emp.id]
+      if (rec && rec.advance_deduction > 0) {
+        const restoredRemaining = (emp.advance_remaining || 0) + rec.advance_deduction
+        const restoredCompleted = Math.max(0, (emp.advance_completed_installments || 0) - 1)
+        await supabase.from('employees').update({
+          advance_remaining: restoredRemaining,
+          advance_completed_installments: restoredCompleted
+        }).eq('id', emp.id)
+      }
+    }
+    await supabase.from('payroll_records').delete().eq('payroll_month', selectedMonth)
+    await supabase.from('payroll_approvals').delete().eq('payroll_month', selectedMonth)
+    await loadEmployees()
+    await loadArchivedMonthsList()
+    await loadMonthData(selectedMonth)
+    setSaving(false)
+    alert('تم حذف أرشفة شهر ' + monthLabel(selectedMonth) + ' بنجاح')
+  }
+
   function startEditEmployee(emp: Employee) {
     setEditingEmployee(emp.id)
     setEmpEditForm({
@@ -377,6 +401,12 @@ export default function Payroll({ readOnly = false }: { readOnly?: boolean }) {
             style={{background:'#f3f4f6',color:'#374151',border:'1px solid #d1d5db',borderRadius:8,padding:'9px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
             طباعة {selectedForPrint.length > 0 ? '(' + selectedForPrint.length + ' محدد)' : 'الكل'}
           </button>
+          {!readOnly && isArchivedMonth && (
+            <button onClick={deleteArchive} disabled={saving}
+              style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:8,padding:'9px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+              حذف الأرشفة
+            </button>
+          )}
           {!readOnly && (
             <button onClick={saveMonthPayroll} disabled={saving}
               style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:14,fontWeight:600}}>
@@ -482,14 +512,14 @@ export default function Payroll({ readOnly = false }: { readOnly?: boolean }) {
         <div className="signatures">
           <div className="signature-box">
             <div className="signature-img-wrap">
-              {approvals['site_manager']?.signature_url && <img src={approvals['site_manager'].signature_url!} alt="" style={{height: 50 * (approvals['site_manager'].signature_scale || 1), objectFit:'contain'}}/>}
+              {approvals['site_manager']?.signature_url && <img src={approvals['site_manager'].signature_url!} alt="" style={{height: 50 * (sigScaleDraft['site_manager'] || 1), objectFit:'contain'}}/>}
             </div>
             <div className="signature-line">مدير الموقع</div>
             <div className="signature-person">{approvals['site_manager']?.person_name}</div>
           </div>
           <div className="signature-box">
             <div className="signature-img-wrap">
-              {approvals['hr_manager']?.signature_url && <img src={approvals['hr_manager'].signature_url!} alt="" style={{height: 50 * (approvals['hr_manager'].signature_scale || 1), objectFit:'contain'}}/>}
+              {approvals['hr_manager']?.signature_url && <img src={approvals['hr_manager'].signature_url!} alt="" style={{height: 50 * (sigScaleDraft['hr_manager'] || 1), objectFit:'contain'}}/>}
             </div>
             <div className="signature-line">مدير قسم الموارد البشرية</div>
             <div className="signature-person">{approvals['hr_manager']?.person_name}</div>
