@@ -318,7 +318,7 @@ export default function Home() {
       {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
       {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} />}
       {activeSection === 'visa' && <Visa readOnly={isReadOnly} />}
-      {activeSection === 'payroll' && <Payroll readOnly={isReadOnly} />}
+      {activeSection === 'payroll' && <Payroll readOnly={isReadOnly} userRole={userRole || ''} />}
 
       {/* قسم الحسابات: مصاريف + وصولات */}
       {activeSection === 'finance' && (

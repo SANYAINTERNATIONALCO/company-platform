@@ -50,7 +50,7 @@ const monthLabel = (m: string): string => {
   return names[parseInt(month) - 1] + ' ' + year
 }
 
-export default function Payroll({ readOnly = false }: { readOnly?: boolean }) {
+export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?: boolean; userRole?: string }) {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState('')
@@ -429,10 +429,13 @@ export default function Payroll({ readOnly = false }: { readOnly?: boolean }) {
       </div>
 
       {/* إعدادات التوقيعات والموافقة الشهرية */}
-      {!readOnly && (
+      {(!readOnly || userRole === 'admin') && (
         <div style={{padding:'14px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',gap:24,flexWrap:'wrap'}}>
-          {['site_manager','hr_manager'].map(role => {
+          {['site_manager','hr_manager']
+            .filter(role => !readOnly || (userRole === 'admin' && role === 'site_manager'))
+            .map(role => {
             const app = approvals[role]
+            const canManageThis = !readOnly || (userRole === 'admin' && role === 'site_manager')
             return (
               <div key={role} style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                 <span style={{fontSize:12,fontWeight:600,color:'#374151'}}>
@@ -441,20 +444,26 @@ export default function Payroll({ readOnly = false }: { readOnly?: boolean }) {
                 {app?.signature_url ? (
                   <>
                     <img src={app.signature_url} alt="" style={{height: 28 * (sigScaleDraft[role] || 1), objectFit:'contain'}}/>
-                    <input type="range" min="0.5" max="2" step="0.1" value={sigScaleDraft[role] || 1}
-                      onChange={e=>updateSignatureScale(role, parseFloat(e.target.value))} style={{width:80}}/>
-                    <button onClick={()=>removeApprovalSignature(role)}
-                      style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'3px 10px',cursor:'pointer',fontSize:11}}>
-                      إزالة الموافقة
-                    </button>
+                    {canManageThis && (
+                      <>
+                        <input type="range" min="0.5" max="2" step="0.1" value={sigScaleDraft[role] || 1}
+                          onChange={e=>updateSignatureScale(role, parseFloat(e.target.value))} style={{width:80}}/>
+                        <button onClick={()=>removeApprovalSignature(role)}
+                          style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'3px 10px',cursor:'pointer',fontSize:11}}>
+                          إزالة الموافقة
+                        </button>
+                      </>
+                    )}
                   </>
                 ) : (
                   <>
                     <span style={{fontSize:11,color:'#dc2626',fontWeight:600}}>لم تتم الموافقة على هذا الشهر</span>
-                    <label style={{background:'#eff6ff',color:'#1d4ed8',border:'1px dashed #93c5fd',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:500}}>
-                      {uploadingSig === role ? 'جارٍ الرفع...' : 'رفع توقيع الموافقة'}
-                      <input type="file" accept="image/*" style={{display:'none'}} onChange={e=>handleSignatureUpload(role, e)} disabled={uploadingSig !== null}/>
-                    </label>
+                    {canManageThis && (
+                      <label style={{background:'#eff6ff',color:'#1d4ed8',border:'1px dashed #93c5fd',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:500}}>
+                        {uploadingSig === role ? 'جارٍ الرفع...' : 'رفع توقيع الموافقة'}
+                        <input type="file" accept="image/*" style={{display:'none'}} onChange={e=>handleSignatureUpload(role, e)} disabled={uploadingSig !== null}/>
+                      </label>
+                    )}
                   </>
                 )}
               </div>
