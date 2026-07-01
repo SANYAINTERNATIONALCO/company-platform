@@ -53,6 +53,7 @@ const categories = [
   { key: 'multiple_visa', label: 'حاصلون على فيزا متعددة', icon: '✅', color: '#15803d', bg: '#dcfce7' },
   { key: 'applied_multiple', label: 'مقدمون على فيزا متعددة', icon: '📋', color: '#b45309', bg: '#fef9c3' },
   { key: 'violators', label: 'مخالفون', icon: '⚠️', color: '#dc2626', bg: '#fee2e2' },
+  { key: 'tourist_visas', label: 'التأشيرات السياحية', icon: '✈️', color: '#7c3aed', bg: '#ede9fe' },
 ]
 
 const nationalities = [
