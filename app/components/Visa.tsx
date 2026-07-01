@@ -386,6 +386,63 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
             </div>
           </div>
 
+          {/* إحصائيات التأشيرات السياحية والسنوية */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:20}}>
+            {/* التأشيرات السياحية */}
+            <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
+              <div style={{padding:'14px 20px',background:'#eff6ff',borderBottom:'2px solid #bfdbfe',display:'flex',alignItems:'center',gap:10}}>
+                <span style={{fontSize:20}}>✈️</span>
+                <div>
+                  <div style={{fontSize:15,fontWeight:700,color:'#1e40af'}}>التأشيرات السياحية</div>
+                  <div style={{fontSize:13,color:'#6b7280',marginTop:2}}>الإجمالي: <strong style={{color:'#1e40af'}}>{touristVisas.length}</strong></div>
+                </div>
+              </div>
+              <div style={{padding:'16px 20px'}}>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+                  <div style={{background:'#dcfce7',borderRadius:10,padding:'12px 14px',textAlign:'center'}}>
+                    <div style={{fontSize:11,color:'#15803d',fontWeight:600,marginBottom:4}}>سارية</div>
+                    <div style={{fontSize:26,fontWeight:700,color:'#15803d'}}>{touristVisas.length - touristViolated}</div>
+                  </div>
+                  <div style={{background:'#fee2e2',borderRadius:10,padding:'12px 14px',textAlign:'center'}}>
+                    <div style={{fontSize:11,color:'#dc2626',fontWeight:600,marginBottom:4}}>مخالفون</div>
+                    <div style={{fontSize:26,fontWeight:700,color:'#dc2626'}}>{touristViolated}</div>
+                  </div>
+                  <div style={{background:'#fef9c3',borderRadius:10,padding:'12px 14px',textAlign:'center'}}>
+                    <div style={{fontSize:11,color:'#b45309',fontWeight:600,marginBottom:4}}>تنتهي قريباً</div>
+                    <div style={{fontSize:26,fontWeight:700,color:'#b45309'}}>{touristWarning}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* التأشيرات السنوية */}
+            <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
+              <div style={{padding:'14px 20px',background:'#fdf4ff',borderBottom:'2px solid #e9d5ff',display:'flex',alignItems:'center',gap:10}}>
+                <span style={{fontSize:20}}>📅</span>
+                <div>
+                  <div style={{fontSize:15,fontWeight:700,color:'#7c3aed'}}>التأشيرات السنوية</div>
+                  <div style={{fontSize:13,color:'#6b7280',marginTop:2}}>الإجمالي: <strong style={{color:'#7c3aed'}}>{annualVisas.length}</strong></div>
+                </div>
+              </div>
+              <div style={{padding:'16px 20px'}}>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+                  <div style={{background:'#dcfce7',borderRadius:10,padding:'12px 14px',textAlign:'center'}}>
+                    <div style={{fontSize:11,color:'#15803d',fontWeight:600,marginBottom:4}}>سارية</div>
+                    <div style={{fontSize:26,fontWeight:700,color:'#15803d'}}>{annualVisas.length - annualViolated}</div>
+                  </div>
+                  <div style={{background:'#fee2e2',borderRadius:10,padding:'12px 14px',textAlign:'center'}}>
+                    <div style={{fontSize:11,color:'#dc2626',fontWeight:600,marginBottom:4}}>مخالفون</div>
+                    <div style={{fontSize:26,fontWeight:700,color:'#dc2626'}}>{annualViolated}</div>
+                  </div>
+                  <div style={{background:'#fef9c3',borderRadius:10,padding:'12px 14px',textAlign:'center'}}>
+                    <div style={{fontSize:11,color:'#b45309',fontWeight:600,marginBottom:4}}>تنتهي قريباً</div>
+                    <div style={{fontSize:26,fontWeight:700,color:'#b45309'}}>{annualWarning}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {categories.map(cat => (
             <div key={cat.key} style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden',marginBottom:16}}>
               <div style={{padding:'14px 20px',background:cat.bg,borderBottom:`2px solid ${cat.color}22`,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
