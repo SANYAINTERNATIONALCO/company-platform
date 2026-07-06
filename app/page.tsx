@@ -9,6 +9,7 @@ import Employees from './components/Employees'
 import Payroll from './components/Payroll'
 import Tasks from './components/Tasks'
 import ActivityLog from './components/ActivityLog'
+import Documents from './components/Documents'
 import { logActivity } from './logActivity'
 
 const supabase = createClient(
@@ -112,6 +113,7 @@ export default function Home() {
     { id: 'finance', label: 'الحسابات', desc: 'المصاريف والوصولات', icon: 'FIN', color: '#15803d', bg: '#dcfce7', show: ['editor','admin','accountant','guest_1','guest_2'] },
     { id: 'payroll', label: 'الرواتب', desc: 'كشوف رواتب الموظفين الشهرية', icon: 'PAY', color: '#0891b2', bg: '#cffafe', show: ['editor','admin','guest_1','guest_2'] },
     { id: 'visa', label: 'التأشيرات', desc: 'إحصائيات الأجانب والتأشيرات السياحية', icon: 'VISA', color: '#b45309', bg: '#fef9c3', show: ['editor','admin','guest_1','guest_2'] },
+    { id: 'documents', label: 'الكتب الرسمية', desc: 'إنشاء وطباعة الكتب والوثائق الرسمية', icon: 'DOC', color: '#9333ea', bg: '#f3e8ff', show: ['editor'] },
     { id: 'activity_log', label: 'سجل النشاطات', desc: 'سجل العمليات وتسجيلات الدخول', icon: 'LOG', color: '#374151', bg: '#f3f4f6', show: ['editor'] },
   ]
 
@@ -168,6 +170,13 @@ export default function Home() {
           <path d="M12 2L2 7l10 5 10-5-10-5z" stroke={color} strokeWidth="1.8" strokeLinejoin="round"/>
           <path d="M2 17l10 5 10-5" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           <path d="M2 12l10 5 10-5" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ),
+      DOC: (
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+          <path d="M6 2.5h8l5 5V21a1 1 0 01-1 1H6a1 1 0 01-1-1V3.5a1 1 0 011-1z" stroke={color} strokeWidth="1.8" strokeLinejoin="round"/>
+          <path d="M14 2.5v5h5" stroke={color} strokeWidth="1.8" strokeLinejoin="round"/>
+          <path d="M9 13h6M9 17h6M9 9h2" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
         </svg>
       ),
     }
@@ -328,6 +337,7 @@ export default function Home() {
       {activeSection === 'tasks' && user && userRole && (
         <Tasks currentUserId={user.id} currentUserRole={userRole} currentUserEmail={user.email || ''} />
       )}
+      {activeSection === 'documents' && userRole === 'editor' && <Documents />}
       {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
       {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
       {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} />}
