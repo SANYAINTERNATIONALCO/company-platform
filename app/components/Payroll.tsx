@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { logActivity } from '../logActivity'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -201,6 +202,7 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
     await loadEmployees()
     await loadArchivedMonthsList()
     setSaving(false)
+    await logActivity('حفظ وأرشفة كشف رواتب', 'payroll', `تم حفظ كشف رواتب شهر ${monthLabel(selectedMonth)}`)
     alert('تم حفظ وأرشفة كشف رواتب شهر ' + monthLabel(selectedMonth) + ' بنجاح')
   }
 
@@ -225,6 +227,7 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
     await loadArchivedMonthsList()
     await loadMonthData(selectedMonth)
     setSaving(false)
+    await logActivity('حذف أرشفة رواتب', 'payroll', `تم حذف أرشفة شهر ${monthLabel(selectedMonth)}`)
     alert('تم حذف أرشفة شهر ' + monthLabel(selectedMonth) + ' بنجاح')
   }
 
@@ -255,6 +258,7 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
     }).eq('id', editingEmployee)
     setEditingEmployee(null)
     await loadEmployees()
+    await logActivity('تعديل بيانات مالية', 'payroll', `تم تعديل الراتب/السلفة للموظف`)
     setSaving(false)
   }
 
@@ -277,6 +281,7 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
         signature_scale: 1
       }, { onConflict: 'payroll_month,role_name' })
       setSigScaleDraft(prev => ({ ...prev, [roleName]: 1 }))
+      await logActivity('رفع توقيع موافقة', 'payroll', `رفع توقيع موافقة على كشف رواتب شهر ${monthLabel(selectedMonth)}`)
       await loadMonthData(selectedMonth)
     }
     setUploadingSig(null)
@@ -286,6 +291,7 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
   async function removeApprovalSignature(roleName: string) {
     if (!confirm('هل أنت متأكد من إزالة هذا التوقيع لهذا الشهر؟ سيحتاج إعادة الرفع للموافقة من جديد.')) return
     await supabase.from('payroll_approvals').delete().eq('payroll_month', selectedMonth).eq('role_name', roleName)
+    await logActivity('إزالة توقيع موافقة', 'payroll', `إزالة توقيع موافقة من كشف رواتب شهر ${monthLabel(selectedMonth)}`)
     await loadMonthData(selectedMonth)
   }
 

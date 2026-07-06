@@ -8,6 +8,8 @@ import Visa from './components/Visa'
 import Employees from './components/Employees'
 import Payroll from './components/Payroll'
 import Tasks from './components/Tasks'
+import ActivityLog from './components/ActivityLog'
+import { logActivity } from './logActivity'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -79,7 +81,10 @@ export default function Home() {
     setError('')
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) setError('خطأ: ' + error.message)
-    else setUser(data.user)
+    else {
+      setUser(data.user)
+      logActivity('تسجيل دخول', 'auth', `دخل المستخدم ${email} إلى المنصة`)
+    }
     setLoading(false)
   }
 
@@ -107,6 +112,7 @@ export default function Home() {
     { id: 'finance', label: 'الحسابات', desc: 'المصاريف والوصولات', icon: 'FIN', color: '#15803d', bg: '#dcfce7', show: ['editor','admin','accountant','guest_1','guest_2'] },
     { id: 'payroll', label: 'الرواتب', desc: 'كشوف رواتب الموظفين الشهرية', icon: 'PAY', color: '#0891b2', bg: '#cffafe', show: ['editor','admin','guest_1','guest_2'] },
     { id: 'visa', label: 'التأشيرات', desc: 'إحصائيات الأجانب والتأشيرات السياحية', icon: 'VISA', color: '#b45309', bg: '#fef9c3', show: ['editor','admin','guest_1','guest_2'] },
+    { id: 'activity_log', label: 'سجل النشاطات', desc: 'سجل العمليات وتسجيلات الدخول', icon: 'LOG', color: '#374151', bg: '#f3f4f6', show: ['editor'] },
   ]
 
   const visibleSections = sections.filter(s => s.show.includes(userRole || ''))
@@ -155,6 +161,13 @@ export default function Home() {
           <rect x="4" y="3.5" width="16" height="17" rx="2" stroke={color} strokeWidth="1.8"/>
           <path d="M8 8h8M8 12h8M8 16h5" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
           <path d="M7 3.5v-1M17 3.5v-1" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+        </svg>
+      ),
+      LOG: (
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7l10 5 10-5-10-5z" stroke={color} strokeWidth="1.8" strokeLinejoin="round"/>
+          <path d="M2 17l10 5 10-5" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M2 12l10 5 10-5" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       ),
     }
@@ -315,6 +328,7 @@ export default function Home() {
       {activeSection === 'tasks' && user && userRole && (
         <Tasks currentUserId={user.id} currentUserRole={userRole} currentUserEmail={user.email || ''} />
       )}
+      {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
       {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
       {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} />}
       {activeSection === 'visa' && <Visa readOnly={isReadOnly} />}

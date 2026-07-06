@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import * as XLSX from 'xlsx'
+import { logActivity } from '../logActivity'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -186,7 +187,9 @@ export default function Finance({ readOnly = false }: { readOnly?: boolean }) {
 
   async function deleteFund(id: string) {
     if (!confirm('هل أنت متأكد؟ سيتم حذف جميع المصاريف المرتبطة!')) return
+    const fund = funds.find(f => f.id === id)
     await supabase.from('funds').delete().eq('id', id)
+    await logActivity('حذف سلفة', 'finance', `حذف السلفة: ${fund?.fund_code} — ${fund?.['المصدر']}`)
     loadFunds()
   }
 
@@ -197,6 +200,7 @@ export default function Finance({ readOnly = false }: { readOnly?: boolean }) {
       expense: 'expenses', fuel: 'fuel_receipts', maintenance: 'maintenance_receipts', delivery: 'delivery_receipts'
     }
     await supabase.from(tableMap[item.source]).delete().eq('id', item.id)
+    await logActivity('حذف عنصر مالي', 'finance', `حذف ${item.sourceLabel}: ${item.description} — ${item.amount} د.ع`)
     await refreshFundData(selectedFund.id)
   }
 

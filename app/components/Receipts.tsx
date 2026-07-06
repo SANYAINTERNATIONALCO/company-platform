@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { logActivity } from '../logActivity'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -304,7 +305,9 @@ export default function Receipts({ readOnly = false }: { readOnly?: boolean }) {
   async function deleteReceipt(type: ReceiptType, id: string) {
     if (!confirm('هل أنت متأكد من حذف هذا الوصل؟')) return
     const tableMap: Record<ReceiptType,string> = { fuel: 'fuel_receipts', maintenance: 'maintenance_receipts', delivery: 'delivery_receipts' }
+    const typeLabel: Record<ReceiptType,string> = { fuel: 'وصل كاز', maintenance: 'وصل صيانة', delivery: 'وصل تسليم مبلغ' }
     await supabase.from(tableMap[type]).delete().eq('id', id)
+    await logActivity('حذف وصل', 'receipts', `حذف ${typeLabel[type]}`)
     loadAllReceipts()
   }
 

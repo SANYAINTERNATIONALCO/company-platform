@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { logActivity } from '../logActivity'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -129,8 +130,7 @@ export default function Employees({ readOnly = false }: { readOnly?: boolean }) 
     const file = e.target.files?.[0]
     if (!file || !selectedEmployee) return
     setUploading(fileType)
-    const fileExt = file.name.split('.').pop()
-const fileName = `${selectedEmployee.id}_${fileType}_${Date.now()}.${fileExt}`
+    const fileName = `${selectedEmployee.id}_${fileType}_${Date.now()}_${file.name}`
     const { data, error } = await supabase.storage.from('employee-files').upload(fileName, file)
     if (error) {
       alert('خطأ في رفع الملف: ' + error.message)
@@ -155,6 +155,7 @@ const fileName = `${selectedEmployee.id}_${fileType}_${Date.now()}.${fileExt}`
     await supabase.from('employee_files').delete().eq('id', id)
     const path = fileUrl.split('/').pop()
     if (path) await supabase.storage.from('employee-files').remove([path])
+    await logActivity('حذف ملف موظف', 'employees', `حذف ملف للموظف: ${selectedEmployee?.name}`)
     if (selectedEmployee) {
       const { data } = await supabase.from('employee_files').select('*').eq('employee_id', selectedEmployee.id).order('uploaded_at', { ascending: false })
       setFiles((data as EmployeeFile[]) || [])
@@ -172,6 +173,7 @@ const fileName = `${selectedEmployee.id}_${fileType}_${Date.now()}.${fileExt}`
   async function deleteNote(id: string) {
     if (!confirm('هل أنت متأكد من حذف هذه الملاحظة؟')) return
     await supabase.from('employee_notes').delete().eq('id', id)
+    await logActivity('حذف ملاحظة موظف', 'employees', `حذف ملاحظة للموظف: ${selectedEmployee?.name}`)
     if (selectedEmployee) {
       const { data } = await supabase.from('employee_notes').select('*').eq('employee_id', selectedEmployee.id).order('created_at', { ascending: false })
       setNotes((data as EmployeeNote[]) || [])

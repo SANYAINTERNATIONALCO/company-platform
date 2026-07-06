@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { logActivity } from '../logActivity'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -206,13 +207,17 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
 
   async function deleteTouristVisa(id: string) {
     if (!confirm('هل أنت متأكد من الحذف؟')) return
+    const visa = touristVisas.find(v => v.id === id)
     await supabase.from('tourist_visas').delete().eq('id', id)
+    await logActivity('حذف تأشيرة سياحية', 'visa', `حذف تأشيرة ${visa?.full_name || ''}`)
     loadTouristVisas()
   }
 
   async function deleteAnnualVisa(id: string) {
     if (!confirm('هل أنت متأكد من الحذف؟')) return
+    const visa = annualVisas.find(v => v.id === id)
     await supabase.from('annual_visas').delete().eq('id', id)
+    await logActivity('حذف تأشيرة سنوية', 'visa', `حذف تأشيرة ${visa?.full_name || ''}`)
     loadAnnualVisas()
   }
 
@@ -220,6 +225,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     if (touristSelected.length === 0) return
     if (!confirm('هل أنت متأكد من حذف ' + touristSelected.length + ' شخص محدد؟')) return
     await supabase.from('tourist_visas').delete().in('id', touristSelected)
+    await logActivity('حذف تأشيرات سياحية جماعي', 'visa', `حذف ${touristSelected.length} تأشيرة سياحية`)
     setTouristSelected([])
     loadTouristVisas()
   }
@@ -228,6 +234,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     if (annualSelected.length === 0) return
     if (!confirm('هل أنت متأكد من حذف ' + annualSelected.length + ' شخص محدد؟')) return
     await supabase.from('annual_visas').delete().in('id', annualSelected)
+    await logActivity('حذف تأشيرات سنوية جماعي', 'visa', `حذف ${annualSelected.length} تأشيرة سنوية`)
     setAnnualSelected([])
     loadAnnualVisas()
   }

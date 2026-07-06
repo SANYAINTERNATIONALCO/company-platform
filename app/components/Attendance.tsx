@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { logActivity } from '../logActivity'
 import * as XLSX from 'xlsx'
 
 const supabase = createClient(
@@ -264,7 +265,9 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
 
   async function deleteEmployeeRecord(empId: string) {
     if (!confirm('هل أنت متأكد من حذف سجل هذا الموظف لهذا اليوم؟')) return
+    const emp = employees.find(e => e.id === empId)
     await supabase.from('attendance_records').delete().eq('employee_id', empId).eq('record_date', selectedDate)
+    await logActivity('حذف سجل حضور', 'attendance', `حذف سجل حضور ${emp?.name || ''} بتاريخ ${selectedDate}`)
     await loadDailyRecords(selectedDate)
     await loadAvailableMonths()
   }
@@ -273,6 +276,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
     if (!confirm('هل أنت متأكد من حذف سجلات جميع الموظفين لهذا اليوم بالكامل؟ لا يمكن التراجع عن هذا الإجراء.')) return
     setSaving(true)
     await supabase.from('attendance_records').delete().eq('record_date', selectedDate)
+    await logActivity('حذف سجل حضور يومي كامل', 'attendance', `حذف سجلات يوم ${selectedDate} بالكامل`)
     await loadDailyRecords(selectedDate)
     await loadAvailableMonths()
     setSaving(false)
