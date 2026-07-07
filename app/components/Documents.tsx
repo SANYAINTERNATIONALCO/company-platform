@@ -33,6 +33,7 @@ interface DocContent {
   date: string
   lang: string
   number: string
+  fontSize?: number
 }
 
 interface IssuedDoc {
@@ -100,6 +101,7 @@ export default function Documents({ readOnly = false }: { readOnly?: boolean }) 
 
   const [docType, setDocType] = useState('SAL')
   const [docLang, setDocLang] = useState<'ar' | 'en'>('ar')
+  const [docFontSize, setDocFontSize] = useState(15)
   const [selectedEmpId, setSelectedEmpId] = useState('')
   const [extraValues, setExtraValues] = useState<Record<string, string>>({})
   const [generatedDoc, setGeneratedDoc] = useState<{ number: string } | null>(null)
@@ -295,7 +297,7 @@ export default function Documents({ readOnly = false }: { readOnly?: boolean }) 
     const today = new Date().toLocaleDateString('en-GB')
 
     const content = buildContent()
-    const docContent: DocContent = { ...content, date: today, lang: docLang, number: docNumber }
+    const docContent: DocContent = { ...content, date: today, lang: docLang, number: docNumber, fontSize: docFontSize }
 
     await supabase.from('official_documents').insert([{
       doc_number: docNumber,
@@ -317,6 +319,7 @@ export default function Documents({ readOnly = false }: { readOnly?: boolean }) 
 
   function printDocument(content: DocContent) {
     const isAr = content.lang === 'ar'
+    const fs = content.fontSize || 15
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
     printWindow.document.write(`
@@ -329,17 +332,17 @@ export default function Documents({ readOnly = false }: { readOnly?: boolean }) 
           @page { margin: 12mm; size: A4; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
           html, body { height: 100%; }
-          body { font-family: 'Times New Roman', Arial, serif; direction: ${isAr ? 'rtl' : 'ltr'}; color: #111; display: flex; flex-direction: column; min-height: 100%; font-size: 15px; }
+          body { font-family: 'Times New Roman', Arial, serif; direction: ${isAr ? 'rtl' : 'ltr'}; color: #111; display: flex; flex-direction: column; min-height: 100%; font-size: ${fs}px; }
           .lh-img { width: 100%; object-fit: contain; margin-bottom: 20px; }
           .letterhead-fallback { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px double #1e40af; padding-bottom: 12px; margin-bottom: 30px; direction: rtl; }
           .lh-ar { font-size: 11px; font-weight: bold; color: #1e40af; text-align: right; line-height: 1.7; max-width: 220px; }
           .lh-en { font-size: 10px; font-weight: bold; color: #1e40af; text-align: left; line-height: 1.5; max-width: 220px; direction: ltr; }
-          .doc-date { text-align: ${isAr ? 'right' : 'left'}; font-size: 14px; font-weight: 600; margin-bottom: 22px; }
-          .doc-to { font-size: 15px; font-weight: 700; margin-bottom: 14px; }
-          .doc-subject { font-size: 16px; font-weight: 700; margin-bottom: 24px; text-align: center; }
+          .doc-date { text-align: ${isAr ? 'right' : 'left'}; font-size: ${fs - 1}px; font-weight: 600; margin-bottom: 22px; }
+          .doc-to { font-size: ${fs}px; font-weight: 700; margin-bottom: 14px; }
+          .doc-subject { font-size: ${fs + 1}px; font-weight: 700; margin-bottom: 24px; text-align: center; }
           .doc-subject span { border-bottom: 2px solid #111; padding-bottom: 2px; }
-          .doc-greeting { font-size: 15px; margin-bottom: 16px; }
-          .doc-body { font-size: 15px; line-height: 2.1; text-align: justify; white-space: pre-line; }
+          .doc-greeting { font-size: ${fs}px; margin-bottom: 16px; }
+          .doc-body { font-size: ${fs}px; line-height: 2.1; text-align: justify; white-space: pre-line; }
           .sig-area { margin-top: 55px; text-align: ${isAr ? 'left' : 'right'}; ${isAr ? 'padding-left' : 'padding-right'}: 50px; }
           .sig-img { height: ${Math.round(65 * sigScale)}px; object-fit: contain; display: block; ${isAr ? 'margin-right: auto; margin-left: 20px' : 'margin-left: auto; margin-right: 20px'}; }
           .sig-title { font-size: 14px; font-weight: 700; margin-top: 6px; }
@@ -478,6 +481,15 @@ export default function Documents({ readOnly = false }: { readOnly?: boolean }) 
                 <select value={docLang} onChange={e=>setDocLang(e.target.value as 'ar'|'en')} style={inputStyle}>
                   <option value="ar">العربية</option>
                   <option value="en">English</option>
+                </select>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>حجم خط الكتاب</label>
+                <select value={docFontSize} onChange={e=>setDocFontSize(parseInt(e.target.value))} style={inputStyle}>
+                  <option value="13">صغير</option>
+                  <option value="15">عادي</option>
+                  <option value="17">كبير</option>
+                  <option value="19">كبير جداً</option>
                 </select>
               </div>
               {currentType.needsEmployee && (
