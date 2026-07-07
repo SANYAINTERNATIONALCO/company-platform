@@ -88,7 +88,7 @@ function numberToArabicWords(num: number): string {
 }
 
 export default function Documents({ readOnly = false }: { readOnly?: boolean }) {
-  const [activeTab, setActiveTab] = useState<'create' | 'archive'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'archive'>(readOnly ? 'archive' : 'create')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [issuedDocs, setIssuedDocs] = useState<IssuedDoc[]>([])
   const [hrSignature, setHrSignature] = useState<Signature | null>(null)
@@ -405,12 +405,14 @@ export default function Documents({ readOnly = false }: { readOnly?: boolean }) 
 
       {/* تبويبات */}
       <div style={{display:'flex',gap:6,marginBottom:16,background:'#e5e7eb',padding:4,borderRadius:10,width:'fit-content'}}>
-        <button onClick={()=>setActiveTab('create')}
-          style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
-            background:activeTab==='create'?'#fff':'transparent',color:activeTab==='create'?'#1e40af':'#6b7280',
-            boxShadow:activeTab==='create'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
-          إنشاء كتاب
-        </button>
+        {!readOnly && (
+          <button onClick={()=>setActiveTab('create')}
+            style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+              background:activeTab==='create'?'#fff':'transparent',color:activeTab==='create'?'#1e40af':'#6b7280',
+              boxShadow:activeTab==='create'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+            إنشاء كتاب
+          </button>
+        )}
         <button onClick={()=>setActiveTab('archive')}
           style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
             background:activeTab==='archive'?'#fff':'transparent',color:activeTab==='archive'?'#1e40af':'#6b7280',
@@ -456,7 +458,7 @@ export default function Documents({ readOnly = false }: { readOnly?: boolean }) 
       )}
 
       {/* إنشاء كتاب */}
-      {activeTab === 'create' && (
+      {activeTab === 'create' && !readOnly && (
         <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
           <div style={{padding:'16px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb'}}>
             <h2 style={{margin:0,fontSize:17,fontWeight:700,color:'#111827'}}>إنشاء كتاب رسمي</h2>
