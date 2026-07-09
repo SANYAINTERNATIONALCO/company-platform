@@ -26,10 +26,12 @@ export default function Home() {
   const [error, setError] = useState('')
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
   const [userRole, setUserRole] = useState<string | null>(null)
-  const [activeSection, setActiveSection] = useState<string | null>(null)
+  const [activeSection, setActiveSection] = useState<string>('dashboard')
   const [financeTab, setFinanceTab] = useState<'expenses' | 'receipts'>('expenses')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [visaAlerts, setVisaAlerts] = useState<{ touristViolated: number; touristWarning: number; annualViolated: number; annualWarning: number }>({ touristViolated: 0, touristWarning: 0, annualViolated: 0, annualWarning: 0 })
   const [taskAlerts, setTaskAlerts] = useState<{ unseen: number; overdue: number }>({ unseen: 0, overdue: 0 })
+  const [dashStats, setDashStats] = useState<{ employees: number; lowFunds: number; myPendingTasks: number }>({ employees: 0, lowFunds: 0, myPendingTasks: 0 })
 
   useEffect(() => { if (user) loadRole() }, [user])
 
@@ -38,19 +40,33 @@ export default function Home() {
   }, [userRole])
 
   useEffect(() => {
-    if (user && userRole) loadTaskAlerts()
+    if (user && userRole) {
+      loadTaskAlerts()
+      loadDashStats()
+    }
   }, [user, userRole])
 
   async function loadTaskAlerts() {
     if (!user) return
     const { data } = await supabase.from('tasks').select('is_seen, status, due_date').eq('assigned_to', user.id)
     const today = new Date(new Date().toDateString())
-    let unseen = 0, overdue = 0
+    let unseen = 0, overdue = 0, pending = 0
     ;(data || []).forEach((t: any) => {
       if (!t.is_seen) unseen++
+      if (t.status !== 'completed') pending++
       if (t.status !== 'completed' && t.due_date && new Date(t.due_date) < today) overdue++
     })
     setTaskAlerts({ unseen, overdue })
+    setDashStats(prev => ({ ...prev, myPendingTasks: pending }))
+  }
+
+  async function loadDashStats() {
+    // عدد الموظفين النشطين
+    const { count: empCount } = await supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'active')
+    // السلف المنخفضة
+    const { data: funds } = await supabase.from('funds_summary').select('*')
+    const lowFunds = (funds || []).filter((f: any) => f['المتبقي'] > 0 && f['المتبقي'] <= f['المبلغ المستلم'] * 0.10).length
+    setDashStats(prev => ({ ...prev, employees: empCount || 0, lowFunds }))
   }
 
   async function loadVisaAlerts() {
@@ -93,7 +109,7 @@ export default function Home() {
     await supabase.auth.signOut()
     setUser(null)
     setUserRole(null)
-    setActiveSection(null)
+    setActiveSection('dashboard')
   }
 
   async function loadRole() {
@@ -106,23 +122,68 @@ export default function Home() {
   const isReadOnly = ['admin', 'guest_1', 'guest_2'].includes(userRole || '')
   const roleLabel: Record<string, string> = { editor: 'محرر', admin: 'مدير', accountant: 'محاسب', guest_1: 'ضيف 1', guest_2: 'ضيف 2' }
 
-  const sections = [
-    { id: 'tasks', label: 'المهام', desc: 'مهامك ومتابعة التكليفات', icon: 'TASK', color: '#dc2626', bg: '#fee2e2', show: ['editor','admin','accountant','guest_1','guest_2'] },
-    { id: 'employees', label: 'الموظفين', desc: 'سجلات وملفات الموظفين', icon: 'EMP', color: '#7c3aed', bg: '#ede9fe', show: ['editor','admin','guest_1','guest_2'] },
-    { id: 'attendance', label: 'الحضور', desc: 'التسجيل اليومي والموقف الشهري', icon: 'ATT', color: '#1e40af', bg: '#dbeafe', show: ['editor','admin','guest_1','guest_2'] },
-    { id: 'finance', label: 'الحسابات', desc: 'المصاريف والوصولات', icon: 'FIN', color: '#15803d', bg: '#dcfce7', show: ['editor','admin','accountant','guest_1','guest_2'] },
-    { id: 'payroll', label: 'الرواتب', desc: 'كشوف رواتب الموظفين الشهرية', icon: 'PAY', color: '#0891b2', bg: '#cffafe', show: ['editor','admin','guest_1','guest_2'] },
-    { id: 'visa', label: 'التأشيرات', desc: 'إحصائيات الأجانب والتأشيرات السياحية', icon: 'VISA', color: '#b45309', bg: '#fef9c3', show: ['editor','admin','guest_1','guest_2'] },
-    { id: 'documents', label: 'الكتب الرسمية', desc: 'إنشاء وطباعة الكتب والوثائق الرسمية', icon: 'DOC', color: '#9333ea', bg: '#f3e8ff', show: ['editor','admin','guest_1','guest_2'] },
-    { id: 'activity_log', label: 'سجل النشاطات', desc: 'سجل العمليات وتسجيلات الدخول', icon: 'LOG', color: '#374151', bg: '#f3f4f6', show: ['editor'] },
+  // مجموعات الشريط الجانبي
+  const navGroups = [
+    {
+      title: '',
+      items: [
+        { id: 'dashboard', label: 'لوحة المعلومات', icon: 'DASH', show: ['editor','admin','accountant','guest_1','guest_2'] },
+      ]
+    },
+    {
+      title: 'الموارد البشرية',
+      items: [
+        { id: 'employees', label: 'الموظفين', icon: 'EMP', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'attendance', label: 'الحضور', icon: 'ATT', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'payroll', label: 'الرواتب', icon: 'PAY', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'documents', label: 'الكتب الرسمية', icon: 'DOC', show: ['editor','admin','guest_1','guest_2'] },
+      ]
+    },
+    {
+      title: 'المالية',
+      items: [
+        { id: 'finance', label: 'الحسابات', icon: 'FIN', show: ['editor','admin','accountant','guest_1','guest_2'] },
+      ]
+    },
+    {
+      title: 'الإدارة',
+      items: [
+        { id: 'visa', label: 'التأشيرات', icon: 'VISA', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'tasks', label: 'المهام', icon: 'TASK', show: ['editor','admin','accountant','guest_1','guest_2'] },
+      ]
+    },
+    {
+      title: 'النظام',
+      items: [
+        { id: 'activity_log', label: 'سجل النشاطات', icon: 'LOG', show: ['editor'] },
+      ]
+    },
   ]
 
-  const visibleSections = sections.filter(s => s.show.includes(userRole || ''))
+  const sectionTitles: Record<string, string> = {
+    dashboard: 'لوحة المعلومات',
+    employees: 'الموظفين',
+    attendance: 'الحضور',
+    payroll: 'الرواتب',
+    documents: 'الكتب الرسمية',
+    finance: 'الحسابات',
+    visa: 'التأشيرات',
+    tasks: 'المهام',
+    activity_log: 'سجل النشاطات',
+  }
 
-  const iconSvg = (type: string, color: string) => {
+  const iconSvg = (type: string, color: string, size: number = 20) => {
     const icons: Record<string, React.ReactElement> = {
+      DASH: (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="8" height="8" rx="1.5" stroke={color} strokeWidth="1.8"/>
+          <rect x="13" y="3" width="8" height="5" rx="1.5" stroke={color} strokeWidth="1.8"/>
+          <rect x="13" y="10" width="8" height="11" rx="1.5" stroke={color} strokeWidth="1.8"/>
+          <rect x="3" y="13" width="8" height="8" rx="1.5" stroke={color} strokeWidth="1.8"/>
+        </svg>
+      ),
       EMP: (
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <circle cx="9" cy="7" r="3.2" stroke={color} strokeWidth="1.8"/>
           <path d="M3.5 19c0-3.3 2.6-5.8 5.8-5.8h.4c3.2 0 5.8 2.5 5.8 5.8" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
           <circle cx="17" cy="8.5" r="2.4" stroke={color} strokeWidth="1.6" opacity="0.6"/>
@@ -130,7 +191,7 @@ export default function Home() {
         </svg>
       ),
       ATT: (
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <rect x="3.5" y="4.5" width="17" height="16" rx="2.2" stroke={color} strokeWidth="1.8"/>
           <path d="M3.5 9.5h17" stroke={color} strokeWidth="1.8"/>
           <path d="M8 3v3M16 3v3" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
@@ -138,20 +199,20 @@ export default function Home() {
         </svg>
       ),
       FIN: (
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <circle cx="12" cy="12" r="8.5" stroke={color} strokeWidth="1.8"/>
           <path d="M12 7.5v9M9.5 9.7c0-1.1 1.1-1.9 2.5-1.9s2.5.8 2.5 1.7c0 2.4-5 1.1-5 3.5 0 1 1.1 1.7 2.5 1.7s2.5-.7 2.5-1.8" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
         </svg>
       ),
       VISA: (
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <rect x="2.5" y="5.5" width="19" height="13" rx="2" stroke={color} strokeWidth="1.8"/>
           <circle cx="8" cy="12" r="2.2" stroke={color} strokeWidth="1.6"/>
           <path d="M13.5 10h6M13.5 14h4" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
         </svg>
       ),
       PAY: (
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <rect x="3" y="6" width="18" height="13" rx="2" stroke={color} strokeWidth="1.8"/>
           <path d="M3 10h18" stroke={color} strokeWidth="1.8"/>
           <circle cx="8" cy="14.5" r="1.6" fill={color}/>
@@ -159,21 +220,21 @@ export default function Home() {
         </svg>
       ),
       TASK: (
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <rect x="4" y="3.5" width="16" height="17" rx="2" stroke={color} strokeWidth="1.8"/>
           <path d="M8 8h8M8 12h8M8 16h5" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
           <path d="M7 3.5v-1M17 3.5v-1" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
         </svg>
       ),
       LOG: (
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <path d="M12 2L2 7l10 5 10-5-10-5z" stroke={color} strokeWidth="1.8" strokeLinejoin="round"/>
           <path d="M2 17l10 5 10-5" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           <path d="M2 12l10 5 10-5" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       ),
       DOC: (
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <path d="M6 2.5h8l5 5V21a1 1 0 01-1 1H6a1 1 0 01-1-1V3.5a1 1 0 011-1z" stroke={color} strokeWidth="1.8" strokeLinejoin="round"/>
           <path d="M14 2.5v5h5" stroke={color} strokeWidth="1.8" strokeLinejoin="round"/>
           <path d="M9 13h6M9 17h6M9 9h2" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
@@ -219,152 +280,247 @@ export default function Home() {
     </div>
   )
 
+  const sidebarWidth = sidebarCollapsed ? 72 : 240
+
   return (
-    <div style={{minHeight:'100vh',background:'#f0f4f8',fontFamily:'system-ui',direction:'rtl'}}>
-      {/* الشريط العلوي */}
-      <div style={{background:'#0f2557',padding:'0 24px',display:'flex',alignItems:'center',justifyContent:'space-between',height:60,boxShadow:'0 2px 10px rgba(0,0,0,0.2)'}}>
-        <div style={{display:'flex',alignItems:'center',gap:16}}>
-          <img src={LOGO_URL} alt="" style={{width:34,height:34,objectFit:'contain'}}
+    <div style={{minHeight:'100vh',background:'#f0f4f8',fontFamily:'system-ui',direction:'rtl',display:'flex'}}>
+
+      {/* الشريط الجانبي */}
+      <aside style={{width:sidebarWidth,minWidth:sidebarWidth,background:'#0f2557',display:'flex',flexDirection:'column',position:'sticky',top:0,height:'100vh',transition:'width 0.2s, min-width 0.2s',boxShadow:'2px 0 10px rgba(0,0,0,0.15)'}}>
+
+        {/* شعار الشركة */}
+        <div style={{padding:sidebarCollapsed?'16px 0':'20px 16px',display:'flex',alignItems:'center',gap:10,justifyContent:sidebarCollapsed?'center':'flex-start',borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
+          <img src={LOGO_URL} alt="" style={{width:38,height:38,objectFit:'contain'}}
             onError={(e)=>{ (e.target as HTMLImageElement).style.display='none' }}/>
-          <span style={{fontWeight:700,fontSize:16,color:'#fff',letterSpacing:0.3}}>Sanya International Company</span>
-          {activeSection && (
-            <button onClick={()=>setActiveSection(null)}
-              style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:6,padding:'6px 14px',cursor:'pointer',fontSize:13,color:'#fff',fontWeight:500}}>
-              ← الرئيسية
-            </button>
+          {!sidebarCollapsed && (
+            <div>
+              <div style={{fontWeight:700,fontSize:13,color:'#fff',lineHeight:1.3}}>Sanya International</div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.5)'}}>منصة إدارة الشركة</div>
+            </div>
           )}
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <span style={{fontSize:12,background:'rgba(255,255,255,0.15)',padding:'5px 12px',borderRadius:20,color:'#fff',fontWeight:600,border:'1px solid rgba(255,255,255,0.2)'}}>
-            {roleLabel[userRole] || userRole}
-          </span>
-          <button onClick={logout} style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.25)',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,color:'#fff',fontWeight:500}}>خروج</button>
+
+        {/* القوائم */}
+        <nav style={{flex:1,overflowY:'auto',padding:'12px 8px'}}>
+          {navGroups.map((group, gi) => {
+            const visibleItems = group.items.filter(item => item.show.includes(userRole || ''))
+            if (visibleItems.length === 0) return null
+            return (
+              <div key={gi} style={{marginBottom:14}}>
+                {group.title && !sidebarCollapsed && (
+                  <div style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.35)',padding:'0 12px',marginBottom:6,letterSpacing:1}}>{group.title}</div>
+                )}
+                {group.title && sidebarCollapsed && (
+                  <div style={{height:1,background:'rgba(255,255,255,0.1)',margin:'8px 12px'}}></div>
+                )}
+                {visibleItems.map(item => {
+                  const isActive = activeSection === item.id
+                  const badge = item.id === 'tasks' && taskAlerts.unseen > 0 ? taskAlerts.unseen : null
+                  return (
+                    <button key={item.id} onClick={()=>setActiveSection(item.id)} title={sidebarCollapsed ? item.label : undefined}
+                      style={{
+                        width:'100%',display:'flex',alignItems:'center',gap:12,padding:sidebarCollapsed?'11px 0':'10px 12px',
+                        justifyContent:sidebarCollapsed?'center':'flex-start',
+                        background:isActive?'rgba(255,255,255,0.14)':'transparent',
+                        border:'none',borderRadius:9,cursor:'pointer',marginBottom:2,
+                        color:isActive?'#fff':'rgba(255,255,255,0.65)',
+                        fontSize:13.5,fontWeight:isActive?700:500,
+                        position:'relative',transition:'background 0.15s, color 0.15s'
+                      }}>
+                      {iconSvg(item.icon, isActive ? '#fff' : 'rgba(255,255,255,0.65)')}
+                      {!sidebarCollapsed && <span>{item.label}</span>}
+                      {badge && (
+                        <span style={{position:sidebarCollapsed?'absolute':'static',top:4,left:8,marginRight:sidebarCollapsed?0:'auto',background:'#dc2626',color:'#fff',borderRadius:20,padding:'1px 7px',fontSize:10,fontWeight:700}}>
+                          {badge}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </nav>
+
+        {/* أسفل الشريط: طي + خروج */}
+        <div style={{padding:'12px 8px',borderTop:'1px solid rgba(255,255,255,0.1)'}}>
+          <button onClick={()=>setSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? 'توسيع القائمة' : 'طي القائمة'}
+            style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:sidebarCollapsed?'10px 0':'9px 12px',justifyContent:sidebarCollapsed?'center':'flex-start',
+              background:'transparent',border:'none',borderRadius:9,cursor:'pointer',color:'rgba(255,255,255,0.55)',fontSize:13,marginBottom:4}}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{transform:sidebarCollapsed?'rotate(180deg)':'none',transition:'transform 0.2s'}}>
+              <path d="M13 5l7 7-7 7M4 5l7 7-7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {!sidebarCollapsed && <span>طي القائمة</span>}
+          </button>
+          <button onClick={logout} title="خروج"
+            style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:sidebarCollapsed?'10px 0':'9px 12px',justifyContent:sidebarCollapsed?'center':'flex-start',
+              background:'transparent',border:'none',borderRadius:9,cursor:'pointer',color:'rgba(255,255,255,0.55)',fontSize:13}}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M15 3h4a1 1 0 011 1v16a1 1 0 01-1 1h-4M10 17l5-5-5-5M15 12H3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {!sidebarCollapsed && <span>تسجيل خروج</span>}
+          </button>
         </div>
-      </div>
+      </aside>
 
-      {/* الصفحة الرئيسية */}
-      {!activeSection && (
-        <div style={{maxWidth:980,margin:'0 auto',padding:'50px 24px'}}>
-          {/* رأس الصفحة الرئيسية */}
-          <div style={{textAlign:'center',marginBottom:50}}>
-            <img src={LOGO_URL} alt="Sanya International Company"
-              style={{width:130,height:130,objectFit:'contain',marginBottom:12}}
-              onError={(e)=>{ (e.target as HTMLImageElement).style.display='none' }}/>
-            <h1 style={{fontSize:30,fontWeight:700,color:'#0f2557',margin:'0 0 6px',letterSpacing:0.3}}>Sanya International Company</h1>
-            <p style={{fontSize:15,color:'#6b7280',margin:0}}>اختر القسم الذي تريد الدخول إليه</p>
+      {/* المحتوى الرئيسي */}
+      <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column'}}>
+
+        {/* الشريط العلوي */}
+        <div style={{background:'#fff',padding:'0 24px',display:'flex',alignItems:'center',justifyContent:'space-between',height:58,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',position:'sticky',top:0,zIndex:10}}>
+          <h1 style={{margin:0,fontSize:17,fontWeight:700,color:'#111827'}}>{sectionTitles[activeSection] || ''}</h1>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <div style={{textAlign:'left'}}>
+              <div style={{fontSize:12,fontWeight:600,color:'#374151',direction:'ltr'}}>{user.email}</div>
+            </div>
+            <span style={{fontSize:11,background:'#eff6ff',padding:'4px 12px',borderRadius:20,color:'#1d4ed8',fontWeight:700,border:'1px solid #bfdbfe'}}>
+              {roleLabel[userRole] || userRole}
+            </span>
           </div>
+        </div>
 
-          {/* بطاقة تنبيهات المهام */}
-          {(taskAlerts.unseen > 0 || taskAlerts.overdue > 0) && (
-            <div style={{background:'#fff',border:'1px solid #bfdbfe',borderRadius:16,padding:'20px 24px',marginBottom:24,boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
-              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
-                <span style={{width:10,height:10,borderRadius:'50%',background:'#2563eb',display:'inline-block'}}></span>
-                <h2 style={{margin:0,fontSize:16,fontWeight:700,color:'#111827'}}>المهام</h2>
+        {/* المحتوى */}
+        <div style={{flex:1}}>
+
+          {/* لوحة المعلومات */}
+          {activeSection === 'dashboard' && (
+            <div style={{padding:'28px 24px',maxWidth:1100,margin:'0 auto'}}>
+              <div style={{marginBottom:24}}>
+                <h2 style={{margin:'0 0 4px',fontSize:22,fontWeight:700,color:'#0f2557'}}>مرحباً بك 👋</h2>
+                <p style={{margin:0,fontSize:13,color:'#6b7280'}}>نظرة عامة سريعة على المنصة — {new Date().toLocaleDateString('ar-IQ', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
               </div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
-                {taskAlerts.unseen > 0 && (
-                  <button onClick={()=>setActiveSection('tasks')} style={{textAlign:'right',background:'#eff6ff',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                    <div style={{fontSize:13,color:'#1d4ed8',fontWeight:700}}>{taskAlerts.unseen} مهمة جديدة لم تُفتح بعد</div>
+
+              {/* بطاقات إحصائية سريعة */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:16,marginBottom:28}}>
+                {userRole !== 'accountant' && (
+                  <button onClick={()=>setActiveSection('employees')} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:14,padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'0 1px 3px rgba(0,0,0,0.05)',display:'flex',alignItems:'center',gap:14}}>
+                    <div style={{background:'#ede9fe',borderRadius:12,width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('EMP','#7c3aed',24)}</div>
+                    <div>
+                      <div style={{fontSize:24,fontWeight:700,color:'#111827'}}>{dashStats.employees}</div>
+                      <div style={{fontSize:12,color:'#6b7280'}}>موظف نشط</div>
+                    </div>
                   </button>
                 )}
-                {taskAlerts.overdue > 0 && (
-                  <button onClick={()=>setActiveSection('tasks')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                    <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{taskAlerts.overdue} مهمة متأخرة عن تاريخ الاستحقاق</div>
+                <button onClick={()=>setActiveSection('tasks')} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:14,padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'0 1px 3px rgba(0,0,0,0.05)',display:'flex',alignItems:'center',gap:14}}>
+                  <div style={{background:'#fee2e2',borderRadius:12,width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('TASK','#dc2626',24)}</div>
+                  <div>
+                    <div style={{fontSize:24,fontWeight:700,color:'#111827'}}>{dashStats.myPendingTasks}</div>
+                    <div style={{fontSize:12,color:'#6b7280'}}>مهمة غير مكتملة لديك</div>
+                  </div>
+                </button>
+                <button onClick={()=>setActiveSection('finance')} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:14,padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'0 1px 3px rgba(0,0,0,0.05)',display:'flex',alignItems:'center',gap:14}}>
+                  <div style={{background:dashStats.lowFunds>0?'#fef9c3':'#dcfce7',borderRadius:12,width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('FIN',dashStats.lowFunds>0?'#b45309':'#15803d',24)}</div>
+                  <div>
+                    <div style={{fontSize:24,fontWeight:700,color:dashStats.lowFunds>0?'#b45309':'#111827'}}>{dashStats.lowFunds}</div>
+                    <div style={{fontSize:12,color:'#6b7280'}}>سلفة منخفضة الرصيد</div>
+                  </div>
+                </button>
+                {(userRole === 'editor' || userRole === 'admin') && (
+                  <button onClick={()=>setActiveSection('visa')} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:14,padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'0 1px 3px rgba(0,0,0,0.05)',display:'flex',alignItems:'center',gap:14}}>
+                    <div style={{background:(visaAlerts.touristViolated+visaAlerts.annualViolated)>0?'#fee2e2':'#fef9c3',borderRadius:12,width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('VISA',(visaAlerts.touristViolated+visaAlerts.annualViolated)>0?'#dc2626':'#b45309',24)}</div>
+                    <div>
+                      <div style={{fontSize:24,fontWeight:700,color:(visaAlerts.touristViolated+visaAlerts.annualViolated)>0?'#dc2626':'#111827'}}>{visaAlerts.touristViolated+visaAlerts.annualViolated}</div>
+                      <div style={{fontSize:12,color:'#6b7280'}}>مخالف تأشيرة</div>
+                    </div>
                   </button>
                 )}
               </div>
+
+              {/* تنبيهات المهام */}
+              {(taskAlerts.unseen > 0 || taskAlerts.overdue > 0) && (
+                <div style={{background:'#fff',border:'1px solid #bfdbfe',borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+                    <span style={{width:10,height:10,borderRadius:'50%',background:'#2563eb',display:'inline-block'}}></span>
+                    <h2 style={{margin:0,fontSize:15,fontWeight:700,color:'#111827'}}>تنبيهات المهام</h2>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
+                    {taskAlerts.unseen > 0 && (
+                      <button onClick={()=>setActiveSection('tasks')} style={{textAlign:'right',background:'#eff6ff',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                        <div style={{fontSize:13,color:'#1d4ed8',fontWeight:700}}>{taskAlerts.unseen} مهمة جديدة لم تُفتح بعد</div>
+                      </button>
+                    )}
+                    {taskAlerts.overdue > 0 && (
+                      <button onClick={()=>setActiveSection('tasks')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                        <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{taskAlerts.overdue} مهمة متأخرة عن تاريخ الاستحقاق</div>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* تنبيهات التأشيرات */}
+              {(userRole === 'editor' || userRole === 'admin') && (() => {
+                const totalViolated = visaAlerts.touristViolated + visaAlerts.annualViolated
+                const totalWarning = visaAlerts.touristWarning + visaAlerts.annualWarning
+                if (totalViolated === 0 && totalWarning === 0) return null
+                return (
+                  <div style={{background:'#fff',border:'1px solid #fecaca',borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+                      <span style={{width:10,height:10,borderRadius:'50%',background:'#dc2626',display:'inline-block'}}></span>
+                      <h2 style={{margin:0,fontSize:15,fontWeight:700,color:'#111827'}}>تنبيهات التأشيرات</h2>
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
+                      {visaAlerts.touristViolated > 0 && (
+                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                          <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{visaAlerts.touristViolated} مخالف — تأشيرة سياحية منتهية</div>
+                        </button>
+                      )}
+                      {visaAlerts.touristWarning > 0 && (
+                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fef9c3',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                          <div style={{fontSize:13,color:'#b45309',fontWeight:700}}>{visaAlerts.touristWarning} تأشيرة سياحية تنتهي قريباً (أقل من 7 أيام)</div>
+                        </button>
+                      )}
+                      {visaAlerts.annualViolated > 0 && (
+                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                          <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{visaAlerts.annualViolated} مخالف — تأشيرة سنوية منتهية</div>
+                        </button>
+                      )}
+                      {visaAlerts.annualWarning > 0 && (
+                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fef9c3',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
+                          <div style={{fontSize:13,color:'#b45309',fontWeight:700}}>{visaAlerts.annualWarning} تأشيرة سنوية تنتهي قريباً (أقل من 4 أشهر)</div>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           )}
 
-          {/* بطاقة التنبيهات الموحدة */}
-          {(userRole === 'editor' || userRole === 'admin') && (() => {
-            const totalViolated = visaAlerts.touristViolated + visaAlerts.annualViolated
-            const totalWarning = visaAlerts.touristWarning + visaAlerts.annualWarning
-            if (totalViolated === 0 && totalWarning === 0) return null
-            return (
-              <div style={{background:'#fff',border:'1px solid #fecaca',borderRadius:16,padding:'20px 24px',marginBottom:32,boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
-                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
-                  <span style={{width:10,height:10,borderRadius:'50%',background:'#dc2626',display:'inline-block'}}></span>
-                  <h2 style={{margin:0,fontSize:16,fontWeight:700,color:'#111827'}}>التنبيهات</h2>
-                </div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
-                  {visaAlerts.touristViolated > 0 && (
-                    <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                      <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{visaAlerts.touristViolated} مخالف — تأشيرة سياحية منتهية</div>
-                    </button>
-                  )}
-                  {visaAlerts.touristWarning > 0 && (
-                    <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fef9c3',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                      <div style={{fontSize:13,color:'#b45309',fontWeight:700}}>{visaAlerts.touristWarning} تأشيرة سياحية تنتهي قريباً (أقل من 7 أيام)</div>
-                    </button>
-                  )}
-                  {visaAlerts.annualViolated > 0 && (
-                    <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                      <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{visaAlerts.annualViolated} مخالف — تأشيرة سنوية منتهية</div>
-                    </button>
-                  )}
-                  {visaAlerts.annualWarning > 0 && (
-                    <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fef9c3',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                      <div style={{fontSize:13,color:'#b45309',fontWeight:700}}>{visaAlerts.annualWarning} تأشيرة سنوية تنتهي قريباً (أقل من 4 أشهر)</div>
-                    </button>
-                  )}
-                </div>
+          {/* الأقسام */}
+          {activeSection === 'tasks' && user && userRole && (
+            <Tasks currentUserId={user.id} currentUserRole={userRole} currentUserEmail={user.email || ''} />
+          )}
+          {activeSection === 'documents' && <Documents readOnly={isReadOnly} />}
+          {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
+          {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
+          {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} />}
+          {activeSection === 'visa' && <Visa readOnly={isReadOnly} />}
+          {activeSection === 'payroll' && <Payroll readOnly={isReadOnly} userRole={userRole || ''} />}
+
+          {/* قسم الحسابات: مصاريف + وصولات */}
+          {activeSection === 'finance' && (
+            <div>
+              <div style={{margin:'24px 24px 0',display:'flex',gap:6,background:'#e5e7eb',padding:4,borderRadius:10,width:'fit-content'}}>
+                <button onClick={()=>setFinanceTab('expenses')}
+                  style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+                    background:financeTab==='expenses'?'#fff':'transparent',color:financeTab==='expenses'?'#15803d':'#6b7280',
+                    boxShadow:financeTab==='expenses'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+                  المصاريف
+                </button>
+                <button onClick={()=>setFinanceTab('receipts')}
+                  style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+                    background:financeTab==='receipts'?'#fff':'transparent',color:financeTab==='receipts'?'#15803d':'#6b7280',
+                    boxShadow:financeTab==='receipts'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+                  الوصولات
+                </button>
               </div>
-            )
-          })()}
-
-          {/* بطاقات الأقسام */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:20}}>
-            {visibleSections.map(section => (
-              <button key={section.id} onClick={()=>setActiveSection(section.id)}
-                style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:16,padding:'30px 22px',cursor:'pointer',textAlign:'right',
-                  boxShadow:'0 1px 3px rgba(0,0,0,0.06)',transition:'all 0.15s',outline:'none',
-                  display:'flex',flexDirection:'column',alignItems:'flex-start',gap:14}}>
-                <div style={{background:section.bg,borderRadius:14,width:64,height:64,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                  {iconSvg(section.icon, section.color)}
-                </div>
-                <div>
-                  <div style={{fontSize:17,fontWeight:700,color:'#111827',marginBottom:4}}>{section.label}</div>
-                  <div style={{fontSize:12.5,color:'#9ca3af',lineHeight:1.5}}>{section.desc}</div>
-                </div>
-              </button>
-            ))}
-          </div>
+              {financeTab === 'expenses' && <Finance readOnly={isReadOnly} />}
+              {financeTab === 'receipts' && <Receipts readOnly={isReadOnly} />}
+            </div>
+          )}
         </div>
-      )}
-
-      {/* قسم الموظفين والحضور والتأشيرات */}
-      {activeSection === 'tasks' && user && userRole && (
-        <Tasks currentUserId={user.id} currentUserRole={userRole} currentUserEmail={user.email || ''} />
-      )}
-      {activeSection === 'documents' && <Documents readOnly={isReadOnly} />}
-      {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
-      {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
-      {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} />}
-      {activeSection === 'visa' && <Visa readOnly={isReadOnly} />}
-      {activeSection === 'payroll' && <Payroll readOnly={isReadOnly} userRole={userRole || ''} />}
-
-      {/* قسم الحسابات: مصاريف + وصولات */}
-      {activeSection === 'finance' && (
-        <div>
-          <div style={{margin:'24px 24px 0',display:'flex',gap:6,background:'#e5e7eb',padding:4,borderRadius:10,width:'fit-content'}}>
-            <button onClick={()=>setFinanceTab('expenses')}
-              style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
-                background:financeTab==='expenses'?'#fff':'transparent',color:financeTab==='expenses'?'#15803d':'#6b7280',
-                boxShadow:financeTab==='expenses'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
-              المصاريف
-            </button>
-            <button onClick={()=>setFinanceTab('receipts')}
-              style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
-                background:financeTab==='receipts'?'#fff':'transparent',color:financeTab==='receipts'?'#15803d':'#6b7280',
-                boxShadow:financeTab==='receipts'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
-              الوصولات
-            </button>
-          </div>
-          {financeTab === 'expenses' && <Finance readOnly={isReadOnly} />}
-          {financeTab === 'receipts' && <Receipts readOnly={isReadOnly} />}
-        </div>
-      )}
+      </div>
     </div>
   )
 }
