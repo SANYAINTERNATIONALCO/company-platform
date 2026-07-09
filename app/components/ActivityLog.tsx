@@ -61,6 +61,7 @@ export default function ActivityLog() {
     const { data } = await supabase
       .from('activity_log')
       .select('*')
+      .neq('section', 'auth')
       .order('created_at', { ascending: false })
       .limit(500)
     setActivities((data as ActivityEntry[]) || [])
@@ -68,31 +69,18 @@ export default function ActivityLog() {
   }
 
   async function loadLogins() {
+    // قراءة كل عمليات الدخول المسجلة في سجل النشاطات مباشرة
     const { data } = await supabase
-      .from('user_roles')
-      .select('user_id, role')
-    const userIds = (data || []).map((r: any) => r.user_id)
-    if (userIds.length === 0) return
-    const { data: users } = await supabase.auth.admin?.listUsers?.() || { data: null }
-    if (!users) {
-      // Fallback: use activity_log for login entries
-      const { data: loginData } = await supabase
-        .from('activity_log')
-        .select('*')
-        .eq('section', 'auth')
-        .order('created_at', { ascending: false })
-      setLogins((loginData || []).map((l: any) => ({
-        email: l.user_email,
-        last_sign_in_at: l.created_at,
-        created_at: l.created_at
-      })))
-      return
-    }
-    setLogins(users.users?.map((u: any) => ({
-      email: u.email,
-      last_sign_in_at: u.last_sign_in_at,
-      created_at: u.created_at
-    })) || [])
+      .from('activity_log')
+      .select('*')
+      .eq('section', 'auth')
+      .order('created_at', { ascending: false })
+      .limit(300)
+    setLogins((data || []).map((l: any) => ({
+      email: l.user_email,
+      last_sign_in_at: l.created_at,
+      created_at: l.created_at
+    })))
   }
 
   function formatDateTime(d: string) {
@@ -207,13 +195,13 @@ export default function ActivityLog() {
             <h2 style={{margin:0,fontSize:16,fontWeight:700,color:'#111827'}}>سجل الدخول</h2>
           </div>
           {logins.length === 0 ? (
-            <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>لا توجد بيانات دخول</div>
+            <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>لا توجد عمليات دخول مسجّلة بعد</div>
           ) : (
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                 <thead>
                   <tr style={{background:'#f3f4f6'}}>
-                    {['البريد الإلكتروني','آخر دخول','تاريخ إنشاء الحساب'].map(h=>(
+                    {['#','البريد الإلكتروني','وقت الدخول'].map(h=>(
                       <th key={h} style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>{h}</th>
                     ))}
                   </tr>
@@ -221,8 +209,8 @@ export default function ActivityLog() {
                 <tbody>
                   {logins.map((l,i) => (
                     <tr key={i} style={{borderBottom:'1px solid #e5e7eb'}}>
+                      <td style={{padding:'10px 14px',color:'#9ca3af',fontSize:12}}>{i + 1}</td>
                       <td style={{padding:'10px 14px',fontWeight:600,color:'#111827'}}>{l.email}</td>
-                      <td style={{padding:'10px 14px',color:'#6b7280'}}>{l.last_sign_in_at ? formatDateTime(l.last_sign_in_at) : '—'}</td>
                       <td style={{padding:'10px 14px',color:'#6b7280'}}>{formatDateTime(l.created_at)}</td>
                     </tr>
                   ))}
@@ -231,7 +219,7 @@ export default function ActivityLog() {
             </div>
           )}
           <div style={{padding:'12px 20px',background:'#f9fafb',borderTop:'1px solid #e5e7eb',fontSize:12,color:'#9ca3af'}}>
-            ملاحظة: يعرض آخر تسجيل دخول لكل مستخدم. للتاريخ الكامل لكل دخول، راجع تبويب "سجل النشاطات".
+            يعرض آخر 300 عملية دخول للمنصة، الأحدث في الأعلى.
           </div>
         </div>
       )}
