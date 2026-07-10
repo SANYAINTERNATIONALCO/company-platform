@@ -53,6 +53,7 @@ export default function Employees({ readOnly = false }: { readOnly?: boolean }) 
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
   const [files, setFiles] = useState<EmployeeFile[]>([])
   const [notes, setNotes] = useState<EmployeeNote[]>([])
+  const [leaveUsedThisMonth, setLeaveUsedThisMonth] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState<string | null>(null)
   const [newNote, setNewNote] = useState('')
@@ -73,12 +74,17 @@ export default function Employees({ readOnly = false }: { readOnly?: boolean }) 
 
   async function loadEmployeeData(emp: Employee) {
     setSelectedEmployee(emp)
-    const [filesRes, notesRes] = await Promise.all([
+    const month = new Date().toISOString().slice(0, 7)
+    const [year, mon] = month.split('-').map(Number)
+    const lastDay = new Date(year, mon, 0).getDate()
+    const [filesRes, notesRes, leaveRes] = await Promise.all([
       supabase.from('employee_files').select('*').eq('employee_id', emp.id).order('uploaded_at', { ascending: false }),
-      supabase.from('employee_notes').select('*').eq('employee_id', emp.id).order('created_at', { ascending: false })
+      supabase.from('employee_notes').select('*').eq('employee_id', emp.id).order('created_at', { ascending: false }),
+      supabase.from('attendance_records').select('id').eq('employee_id', emp.id).in('status', ['إجازة اعتيادية', 'إجازة']).gte('record_date', month + '-01').lte('record_date', month + '-' + String(lastDay).padStart(2, '0'))
     ])
     setFiles((filesRes.data as EmployeeFile[]) || [])
     setNotes((notesRes.data as EmployeeNote[]) || [])
+    setLeaveUsedThisMonth((leaveRes.data || []).length)
   }
 
   async function addEmployee() {
@@ -303,6 +309,22 @@ export default function Employees({ readOnly = false }: { readOnly?: boolean }) 
                 <div>
                   <h2 style={{margin:0,fontSize:17,fontWeight:700,color:'#111827'}}>{selectedEmployee.name}</h2>
                   <div style={{fontSize:13,color:'#6b7280',marginTop:2}}>{selectedEmployee.job_title}</div>
+                  <div style={{marginTop:6}}>
+                    {selectedEmployee.shift_type === 'روتيشن' ? (
+                      <span style={{fontSize:11,background:'#cffafe',color:'#0891b2',padding:'3px 10px',borderRadius:20,fontWeight:700}}>
+                        نظام روتيشن — أسبوع إجازة شهرياً
+                      </span>
+                    ) : leaveUsedThisMonth !== null && (() => {
+                      const remaining = Math.max(0, 2 - leaveUsedThisMonth)
+                      return (
+                        <span style={{fontSize:11,padding:'3px 10px',borderRadius:20,fontWeight:700,
+                          background: remaining === 0 ? '#fee2e2' : remaining === 1 ? '#fef9c3' : '#dcfce7',
+                          color: remaining === 0 ? '#dc2626' : remaining === 1 ? '#b45309' : '#15803d'}}>
+                          رصيد الإجازة الاعتيادية هذا الشهر: {remaining} من 2
+                        </span>
+                      )
+                    })()}
+                  </div>
                 </div>
               </div>
               {!readOnly && (

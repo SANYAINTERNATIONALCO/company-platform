@@ -34,6 +34,7 @@ interface MonthlyRow {
   'إجازة مرضية': number
   'إجازة طارئة': number
   'إجازة اعتيادية': number
+  'إجازة وفاة': number
   'عطلة رسمية': number
   'مجموع الايام': number
 }
@@ -64,6 +65,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
   const [viewMode, setViewMode] = useState('daily')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [records, setRecords] = useState<Record<string, AttendanceRecord>>({})
+  const [regularLeaveUsed, setRegularLeaveUsed] = useState<Record<string, number>>({})
   const [savedRecords, setSavedRecords] = useState<Record<string, AttendanceRecord>>({})
   const [monthlySummaryList, setMonthlySummaryList] = useState<MonthlyRow[]>([])
   const [availableMonths, setAvailableMonths] = useState<string[]>([])
@@ -106,6 +108,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
   useEffect(() => {
     if (employees.length > 0 && viewMode === 'daily' && selectedDate) {
       loadDailyRecords(selectedDate)
+      loadRegularLeaveUsed(selectedDate)
     }
   }, [selectedDate, employees, viewMode])
 
@@ -135,6 +138,22 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
       .limit(1)
     if (data && data.length > 0) return data[0].status
     return null
+  }
+
+  // حساب الإجازات الاعتيادية المستخدمة في شهر التاريخ المحدد (الرصيد الشهري = 2 يوم، غير تراكمي)
+  async function loadRegularLeaveUsed(date: string) {
+    const month = date.slice(0, 7)
+    const [year, mon] = month.split('-').map(Number)
+    const lastDay = new Date(year, mon, 0).getDate()
+    const { data } = await supabase
+      .from('attendance_records')
+      .select('employee_id, status')
+      .in('status', ['إجازة اعتيادية', 'إجازة'])
+      .gte('record_date', month + '-01')
+      .lte('record_date', month + '-' + String(lastDay).padStart(2, '0'))
+    const counts: Record<string, number> = {}
+    ;(data || []).forEach((r: any) => { counts[r.employee_id] = (counts[r.employee_id] || 0) + 1 })
+    setRegularLeaveUsed(counts)
   }
 
   async function loadDailyRecords(date: string) {
@@ -243,12 +262,22 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
       if (error) { alert('خطأ في حفظ ' + emp.name + ': ' + error.message); setSaving(false); return }
     }
     await loadDailyRecords(selectedDate)
+    await loadRegularLeaveUsed(selectedDate)
     await loadAvailableMonths()
     setSaving(false)
     alert('تم حفظ ' + changedEmployees.length + ' سجل بنجاح')
   }
 
   function updateRecord(empId: string, field: keyof AttendanceRecord, value: string) {
+    // تحذير عند تسجيل إجازة اعتيادية لموظف استنفد رصيده الشهري (يومان) — تحذير فقط دون منع
+    if (field === 'status' && value === 'إجازة اعتيادية') {
+      const emp = employees.find(e => e.id === empId)
+      const used = regularLeaveUsed[empId] || 0
+      const alreadyRegular = ['إجازة اعتيادية', 'إجازة'].includes(records[empId]?.status || '')
+      if (emp?.shift_type !== 'روتيشن' && !alreadyRegular && used >= 2) {
+        alert(`تنبيه: ${emp?.name || 'هذا الموظف'} استنفد رصيده الشهري من الإجازة الاعتيادية (${used} من 2). يمكنك المتابعة إذا كان ذلك بقرار استثنائي.`)
+      }
+    }
     setRecords(prev => ({
       ...prev,
       [empId]: { ...prev[empId], [field]: value }
@@ -269,6 +298,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
     await supabase.from('attendance_records').delete().eq('employee_id', empId).eq('record_date', selectedDate)
     await logActivity('حذف سجل حضور', 'attendance', `حذف سجل حضور ${emp?.name || ''} بتاريخ ${selectedDate}`)
     await loadDailyRecords(selectedDate)
+    await loadRegularLeaveUsed(selectedDate)
     await loadAvailableMonths()
   }
 
@@ -278,6 +308,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
     await supabase.from('attendance_records').delete().eq('record_date', selectedDate)
     await logActivity('حذف سجل حضور يومي كامل', 'attendance', `حذف سجلات يوم ${selectedDate} بالكامل`)
     await loadDailyRecords(selectedDate)
+    await loadRegularLeaveUsed(selectedDate)
     await loadAvailableMonths()
     setSaving(false)
     alert('تم حذف سجلات هذا اليوم بالكامل')
@@ -375,6 +406,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
       'إجازة مرضية': row['إجازة مرضية'],
       'إجازة طارئة': row['إجازة طارئة'],
       'إجازة اعتيادية': row['إجازة اعتيادية'],
+      'إجازة وفاة': row['إجازة وفاة'],
       'عطلة رسمية': row['عطلة رسمية'],
       'مجموع الأيام': row['مجموع الايام'],
     }))
@@ -394,6 +426,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
     if (['حاضر', 'روتيشن'].includes(s)) return { background: '#dcfce7', color: '#15803d' }
     if (s === 'يوم جمعة') return { background: '#dbeafe', color: '#1d4ed8' }
     if (s === 'غائب') return { background: '#fee2e2', color: '#dc2626' }
+    if (s === 'إجازة وفاة') return { background: '#ede9fe', color: '#7c3aed' }
     return { background: '#fef9c3', color: '#b45309' }
   }
 
@@ -417,7 +450,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
     return cur.status !== sav.status || cur.check_in !== sav.check_in || cur.check_out !== sav.check_out || cur.notes !== sav.notes
   }).length
 
-  const monthlyCols = ['الاسم','الشهر','أيام الدوام','روتيشن','ايام الجمعه','عدد ايام الغياب','إجازة مرضية','إجازة طارئة','إجازة اعتيادية','عطلة رسمية','مجموع الايام']
+  const monthlyCols = ['الاسم','الشهر','أيام الدوام','روتيشن','ايام الجمعه','عدد ايام الغياب','إجازة مرضية','إجازة طارئة','إجازة اعتيادية','إجازة وفاة','عطلة رسمية','مجموع الايام']
 
   const filteredMonthlySummary = useMemo(() => {
     if (selectedEmployeeIds.length === 0) return monthlySummaryList
@@ -433,7 +466,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
     setSelectedEmployeeIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
-  const statusLabels = ['حاضر','روتيشن','يوم جمعة','غائب','إجازة مرضية','إجازة طارئة','إجازة اعتيادية','عطلة رسمية']
+  const statusLabels = ['حاضر','روتيشن','يوم جمعة','غائب','إجازة مرضية','إجازة طارئة','إجازة اعتيادية','إجازة وفاة','عطلة رسمية']
 
   return (
     <div style={{margin:'24px',background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
@@ -555,6 +588,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
                 <th style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>الموظف</th>
                 <th style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>المنصب</th>
                 <th style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>الحالة</th>
+                <th style={{padding:'10px 14px',textAlign:'center',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>رصيد الاعتيادية</th>
                 <th style={{padding:'10px 14px',textAlign:'center',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>دخول</th>
                 <th style={{padding:'10px 14px',textAlign:'center',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>خروج</th>
                 <th style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',minWidth:160}}>ملاحظات</th>
@@ -581,6 +615,21 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
                           {statusLabels.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                       )}
+                    </td>
+                    <td style={{padding:'10px 14px',textAlign:'center'}}>
+                      {emp.shift_type === 'روتيشن' ? (
+                        <span style={{fontSize:11,color:'#9ca3af'}}>—</span>
+                      ) : (() => {
+                        const used = regularLeaveUsed[emp.id] || 0
+                        const remaining = Math.max(0, 2 - used)
+                        return (
+                          <span style={{fontSize:12,fontWeight:700,padding:'3px 10px',borderRadius:20,
+                            background: remaining === 0 ? '#fee2e2' : remaining === 1 ? '#fef9c3' : '#dcfce7',
+                            color: remaining === 0 ? '#dc2626' : remaining === 1 ? '#b45309' : '#15803d'}}>
+                            {remaining} / 2
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td style={{padding:'10px 14px',textAlign:'center'}}>
                       {readOnly ? (
@@ -709,7 +758,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
               <thead>
                 <tr>
                   <th>الاسم</th><th>الشهر</th><th>أيام الدوام</th><th>روتيشن</th><th>أيام الجمعة</th>
-                  <th>الغياب</th><th>مرضية</th><th>طارئة</th><th>اعتيادية</th><th>عطلة رسمية</th><th>المجموع</th>
+                  <th>الغياب</th><th>مرضية</th><th>طارئة</th><th>اعتيادية</th><th>وفاة</th><th>عطلة رسمية</th><th>المجموع</th>
                 </tr>
               </thead>
               <tbody>
@@ -724,6 +773,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
                     <td>{row['إجازة مرضية']}</td>
                     <td>{row['إجازة طارئة']}</td>
                     <td>{row['إجازة اعتيادية']}</td>
+                    <td>{row['إجازة وفاة']}</td>
                     <td>{row['عطلة رسمية']}</td>
                     <td className="total-col">{row['مجموع الايام']}</td>
                   </tr>
@@ -806,6 +856,7 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
                         <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة مرضية']}</td>
                         <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة طارئة']}</td>
                         <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة اعتيادية']}</td>
+                        <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة وفاة']}</td>
                         <td style={{padding:'12px 16px',textAlign:'center'}}>{row['عطلة رسمية']}</td>
                         <td style={{padding:'12px 16px',textAlign:'center',fontWeight:700,background:'#f9fafb'}}>{row['مجموع الايام']}</td>
                       </tr>
