@@ -11,6 +11,7 @@ import Tasks from './components/Tasks'
 import ActivityLog from './components/ActivityLog'
 import Documents from './components/Documents'
 import Custody from './components/Custody'
+import Contracts from './components/Contracts'
 import { logActivity } from './logActivity'
 
 const supabase = createClient(
@@ -139,6 +140,7 @@ export default function Home() {
         { id: 'payroll', label: 'الرواتب', icon: 'PAY', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'documents', label: 'الكتب الرسمية', icon: 'DOC', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'custody', label: 'العهد المالية', icon: 'CUST', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'contracts', label: 'العقود', icon: 'CONT', show: ['editor','admin','guest_1','guest_2'] },
       ]
     },
     {
@@ -169,6 +171,7 @@ export default function Home() {
     payroll: 'الرواتب',
     documents: 'الكتب الرسمية',
     custody: 'العهد المالية',
+    contracts: 'العقود',
     finance: 'الحسابات',
     visa: 'التأشيرات',
     tasks: 'المهام',
@@ -247,6 +250,13 @@ export default function Home() {
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <path d="M3.5 8.5L12 4l8.5 4.5v7L12 20l-8.5-4.5v-7z" stroke={color} strokeWidth="1.8" strokeLinejoin="round"/>
           <path d="M3.5 8.5L12 13l8.5-4.5M12 13v7" stroke={color} strokeWidth="1.8" strokeLinejoin="round"/>
+        </svg>
+      ),
+      CONT: (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z" stroke={color} strokeWidth="1.8" strokeLinejoin="round"/>
+          <path d="M8 8h8M8 12h8M8 16h4" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+          <path d="M14.5 17.5l1.5 1.5 3-3" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       ),
     }
@@ -502,6 +512,7 @@ export default function Home() {
           )}
           {activeSection === 'documents' && <Documents readOnly={isReadOnly} />}
           {activeSection === 'custody' && <Custody readOnly={isReadOnly} />}
+          {activeSection === 'contracts' && <Contracts readOnly={isReadOnly} />}
           {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
           {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
           {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} />}
