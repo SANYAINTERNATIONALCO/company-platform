@@ -13,6 +13,7 @@ import Documents from './components/Documents'
 import Custody from './components/Custody'
 import Contracts from './components/Contracts'
 import Reports from './components/Reports'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { logActivity } from './logActivity'
 
 const supabase = createClient(
@@ -35,6 +36,7 @@ export default function Home() {
   const [visaAlerts, setVisaAlerts] = useState<{ touristViolated: number; touristWarning: number; annualViolated: number; annualWarning: number }>({ touristViolated: 0, touristWarning: 0, annualViolated: 0, annualWarning: 0 })
   const [taskAlerts, setTaskAlerts] = useState<{ unseen: number; overdue: number }>({ unseen: 0, overdue: 0 })
   const [dashStats, setDashStats] = useState<{ employees: number; lowFunds: number; myPendingTasks: number }>({ employees: 0, lowFunds: 0, myPendingTasks: 0 })
+  const [miniChart, setMiniChart] = useState<any[]>([])
 
   useEffect(() => { if (user) loadRole() }, [user])
 
@@ -46,6 +48,7 @@ export default function Home() {
     if (user && userRole) {
       loadTaskAlerts()
       loadDashStats()
+      if (userRole !== 'accountant') loadMiniChart()
     }
   }, [user, userRole])
 
@@ -70,6 +73,29 @@ export default function Home() {
     const { data: funds } = await supabase.from('funds_summary').select('*')
     const lowFunds = (funds || []).filter((f: any) => f['المتبقي'] > 0 && f['المتبقي'] <= f['المبلغ المستلم'] * 0.10).length
     setDashStats(prev => ({ ...prev, employees: empCount || 0, lowFunds }))
+  }
+
+  async function loadMiniChart() {
+    const year = new Date().getFullYear()
+    const yearStr = String(year)
+    const MONTHS_SHORT = ['ينا','فبر','مار','أبر','ماي','يون','يول','أغس','سبت','أكت','نوف','ديس']
+    const [payroll, expenses, fuel, maint, delivery] = await Promise.all([
+      supabase.from('payroll_records').select('payroll_month, net_salary').gte('payroll_month', yearStr + '-01').lte('payroll_month', yearStr + '-12'),
+      supabase.from('expenses').select('amount, expense_date').gte('expense_date', yearStr + '-01-01').lte('expense_date', yearStr + '-12-31'),
+      supabase.from('fuel_receipts').select('amount, created_at').gte('created_at', yearStr + '-01-01').lte('created_at', yearStr + '-12-31'),
+      supabase.from('maintenance_receipts').select('amount, created_at').gte('created_at', yearStr + '-01-01').lte('created_at', yearStr + '-12-31'),
+      supabase.from('delivery_receipts').select('amount, created_at').gte('created_at', yearStr + '-01-01').lte('created_at', yearStr + '-12-31'),
+    ])
+    const salaries: Record<number, number> = {}
+    const spending: Record<number, number> = {}
+    for (let i = 1; i <= 12; i++) { salaries[i] = 0; spending[i] = 0 }
+    ;(payroll.data || []).forEach((r: any) => { const m = parseInt(r.payroll_month?.slice(5, 7)); if (m) salaries[m] += r.net_salary || 0 })
+    const addSpend = (rows: any[], dateField: string) => rows.forEach((r: any) => { const m = parseInt(r[dateField]?.slice(5, 7)); if (m) spending[m] += r.amount || 0 })
+    addSpend(expenses.data || [], 'expense_date')
+    addSpend(fuel.data || [], 'created_at')
+    addSpend(maint.data || [], 'created_at')
+    addSpend(delivery.data || [], 'created_at')
+    setMiniChart(MONTHS_SHORT.map((label, i) => ({ month: label, 'الرواتب': salaries[i + 1], 'المصروفات': spending[i + 1] })))
   }
 
   async function loadVisaAlerts() {
@@ -512,6 +538,32 @@ export default function Home() {
                   </div>
                 )
               })()}
+
+              {/* نظرة سريعة على السنة */}
+              {userRole !== 'accountant' && miniChart.length > 0 && (
+                <div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:10}}>
+                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                      <span style={{width:10,height:10,borderRadius:'50%',background:'#7c3aed',display:'inline-block'}}></span>
+                      <h2 style={{margin:0,fontSize:15,fontWeight:700,color:'#111827'}}>نظرة سريعة على سنة {new Date().getFullYear()}</h2>
+                    </div>
+                    <button onClick={()=>setActiveSection('reports')}
+                      style={{background:'#ede9fe',color:'#7c3aed',border:'none',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:12,fontWeight:700}}>
+                      عرض التقرير الكامل ←
+                    </button>
+                  </div>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={miniChart} margin={{top:5,right:5,bottom:5,left:5}}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                      <XAxis dataKey="month" tick={{fontSize:10,fontFamily:'system-ui'}} tickLine={false}/>
+                      <YAxis tickFormatter={(v:number)=>Math.round(v/1000000)+' م'} tick={{fontSize:10}} tickLine={false} axisLine={false}/>
+                      <Tooltip formatter={(value: any, name: any) => [Math.round(Number(value)).toLocaleString('ar-IQ') + ' د.ع', name]} labelStyle={{fontFamily:'system-ui',fontWeight:700}} contentStyle={{direction:'rtl',fontSize:12,borderRadius:8}}/>
+                      <Bar dataKey="الرواتب" fill="#1e40af" radius={[4,4,0,0]}/>
+                      <Bar dataKey="المصروفات" fill="#dc2626" radius={[4,4,0,0]}/>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </div>
           )}
 
