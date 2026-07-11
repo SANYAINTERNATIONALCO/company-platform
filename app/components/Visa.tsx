@@ -49,6 +49,24 @@ interface AnnualVisa {
   created_at: string
 }
 
+interface VisaCycle {
+  id: string
+  person_name: string
+  passport_number: string | null
+  nationality: string | null
+  visa_expired_date: string
+  exit_visa_issued_date: string | null
+  new_visa_obtained: boolean
+  new_visa_type: string | null
+  new_visa_number: string | null
+  departure_date: string | null
+  departure_notes: string | null
+  return_date: string | null
+  status: string
+  notes: string | null
+  created_at: string
+}
+
 const categories = [
   { key: 'total', label: 'إجمالي الأجانب', icon: '👥', color: '#1e40af', bg: '#dbeafe' },
   { key: 'multiple_visa', label: 'حاصلون على فيزا متعددة', icon: '✅', color: '#15803d', bg: '#dcfce7' },
@@ -63,7 +81,7 @@ const nationalities = [
 ]
 
 export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
-  const [activeTab, setActiveTab] = useState<'stats' | 'tourist' | 'annual'>('stats')
+  const [activeTab, setActiveTab] = useState<'stats' | 'tourist' | 'annual' | 'cycles'>('stats')
   const [stats, setStats] = useState<VisaStat[]>([])
   const [files, setFiles] = useState<VisaFile[]>([])
   const [loading, setLoading] = useState(false)
@@ -89,6 +107,15 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   const [noteText, setNoteText] = useState('')
   const [todayStr, setTodayStr] = useState('')
 
+  // Visa cycle states (دورات المغادرة والعودة)
+  const [cycles, setCycles] = useState<VisaCycle[]>([])
+  const [cycleView, setCycleView] = useState<'active' | 'completed'>('active')
+  const [showCycleForm, setShowCycleForm] = useState(false)
+  const [cycleForm, setCycleForm] = useState({ person_name: '', passport_number: '', nationality: '', visa_expired_date: '' })
+  const [cycleSearch, setCycleSearch] = useState('')
+  const [cycleSaving, setCycleSaving] = useState(false)
+  const [stageInputs, setStageInputs] = useState<Record<string, any>>({})
+
   useEffect(() => {
     const t = new Date().toISOString().split('T')[0]
     setTodayStr(t)
@@ -96,7 +123,105 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     loadFiles()
     loadTouristVisas()
     loadAnnualVisas()
+    loadCycles()
   }, [])
+
+  // ===== دورات المغادرة والعودة =====
+  async function loadCycles() {
+    const { data } = await supabase.from('visa_cycles').select('*').order('created_at', { ascending: false })
+    setCycles((data as VisaCycle[]) || [])
+  }
+
+  function cycleDaysInfo(c: VisaCycle) {
+    const today = new Date(new Date().toDateString())
+    // فترة السماح: 60 يوماً من انتهاء الفيزا
+    const graceEnd = new Date(c.visa_expired_date)
+    graceEnd.setDate(graceEnd.getDate() + 60)
+    const graceDaysLeft = Math.ceil((graceEnd.getTime() - today.getTime()) / 86400000)
+    // فيزا المغادرة: 10 أيام من الإصدار
+    let exitDaysLeft: number | null = null
+    if (c.exit_visa_issued_date) {
+      const exitEnd = new Date(c.exit_visa_issued_date)
+      exitEnd.setDate(exitEnd.getDate() + 10)
+      exitDaysLeft = Math.ceil((exitEnd.getTime() - today.getTime()) / 86400000)
+    }
+    return { graceDaysLeft, graceEnd, exitDaysLeft }
+  }
+
+  async function createCycle() {
+    if (!cycleForm.person_name || !cycleForm.visa_expired_date) { alert('يرجى تعبئة الاسم وتاريخ انتهاء الفيزا'); return }
+    setCycleSaving(true)
+    const { error } = await supabase.from('visa_cycles').insert([{
+      person_name: cycleForm.person_name,
+      passport_number: cycleForm.passport_number || null,
+      nationality: cycleForm.nationality || null,
+      visa_expired_date: cycleForm.visa_expired_date,
+      status: 'grace_period'
+    }])
+    if (error) alert('خطأ: ' + error.message)
+    else {
+      await logActivity('بدء دورة مغادرة وعودة', 'visa', `بدء دورة لـ ${cycleForm.person_name}`)
+      setCycleForm({ person_name: '', passport_number: '', nationality: '', visa_expired_date: '' })
+      setShowCycleForm(false)
+      await loadCycles()
+    }
+    setCycleSaving(false)
+  }
+
+  async function registerExitVisa(c: VisaCycle) {
+    const date = stageInputs[c.id]?.exitDate
+    if (!date) { alert('يرجى تحديد تاريخ إصدار فيزا المغادرة'); return }
+    await supabase.from('visa_cycles').update({ exit_visa_issued_date: date, status: 'exit_visa_issued' }).eq('id', c.id)
+    await logActivity('تسجيل فيزا مغادرة', 'visa', `فيزا مغادرة لـ ${c.person_name}`)
+    setStageInputs(prev => ({ ...prev, [c.id]: {} }))
+    await loadCycles()
+  }
+
+  async function registerDeparture(c: VisaCycle) {
+    const date = stageInputs[c.id]?.depDate
+    if (!date) { alert('يرجى تحديد تاريخ المغادرة'); return }
+    await supabase.from('visa_cycles').update({
+      departure_date: date,
+      departure_notes: stageInputs[c.id]?.depNotes || null,
+      status: 'departed'
+    }).eq('id', c.id)
+    await logActivity('تسجيل مغادرة', 'visa', `${c.person_name} غادر العراق`)
+    setStageInputs(prev => ({ ...prev, [c.id]: {} }))
+    await loadCycles()
+  }
+
+  async function registerReturn(c: VisaCycle) {
+    const date = stageInputs[c.id]?.retDate
+    if (!date) { alert('يرجى تحديد تاريخ العودة'); return }
+    if (!confirm(`تسجيل عودة ${c.person_name} إلى العراق؟ ستكتمل الدورة وتُنقل للأرشيف.`)) return
+    await supabase.from('visa_cycles').update({ return_date: date, status: 'completed' }).eq('id', c.id)
+    await logActivity('تسجيل عودة', 'visa', `${c.person_name} عاد إلى العراق — اكتملت الدورة`)
+    setStageInputs(prev => ({ ...prev, [c.id]: {} }))
+    await loadCycles()
+  }
+
+  async function saveNewVisaInfo(c: VisaCycle) {
+    const inp = stageInputs[c.id] || {}
+    await supabase.from('visa_cycles').update({
+      new_visa_obtained: true,
+      new_visa_type: inp.nvType || 'سياحية',
+      new_visa_number: inp.nvNumber || null
+    }).eq('id', c.id)
+    await logActivity('تسجيل حصول على فيزا جديدة', 'visa', `${c.person_name} حصل على الفيزا الجديدة`)
+    setStageInputs(prev => ({ ...prev, [c.id]: {} }))
+    await loadCycles()
+  }
+
+  async function deleteCycle(c: VisaCycle) {
+    if (!confirm(`هل أنت متأكد من حذف دورة ${c.person_name} نهائياً؟`)) return
+    await supabase.from('visa_cycles').delete().eq('id', c.id)
+    await logActivity('حذف دورة مغادرة', 'visa', `حذف دورة ${c.person_name}`)
+    await loadCycles()
+  }
+
+  function updateStageInput(cycleId: string, key: string, value: any) {
+    setStageInputs(prev => ({ ...prev, [cycleId]: { ...(prev[cycleId] || {}), [key]: value } }))
+  }
 
   async function loadStats() {
     setLoading(true)
@@ -368,6 +493,31 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
               {annualViolated + annualWarning}
             </span>
           )}
+        </button>
+        <button onClick={()=>setActiveTab('cycles')}
+          style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+            background:activeTab==='cycles'?'#fff':'transparent',color:activeTab==='cycles'?'#1e40af':'#6b7280',
+            boxShadow:activeTab==='cycles'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+          دورات المغادرة والعودة
+          {(() => {
+            const activeCycles = cycles.filter(c => c.status !== 'completed')
+            const urgent = activeCycles.filter(c => {
+              const info = cycleDaysInfo(c)
+              return (c.status === 'grace_period' && info.graceDaysLeft <= 10) ||
+                     (c.status === 'exit_visa_issued' && info.exitDaysLeft !== null && info.exitDaysLeft <= 5)
+            }).length
+            if (urgent > 0) return (
+              <span style={{marginRight:6,background:'#dc2626',color:'#fff',borderRadius:20,padding:'1px 7px',fontSize:11,fontWeight:700}}>
+                {urgent}
+              </span>
+            )
+            if (activeCycles.length > 0) return (
+              <span style={{marginRight:6,background:'#dbeafe',color:'#1d4ed8',borderRadius:20,padding:'1px 7px',fontSize:11,fontWeight:700}}>
+                {activeCycles.length}
+              </span>
+            )
+            return null
+          })()}
         </button>
       </div>
 
@@ -798,6 +948,244 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
           </div>
         </div>
       )}
+
+      {/* تبويب دورات المغادرة والعودة */}
+      {activeTab === 'cycles' && (() => {
+        const activeCycles = cycles.filter(c => c.status !== 'completed')
+        const completedCycles = cycles.filter(c => c.status === 'completed')
+        // تنبيهات
+        let exceededGrace = 0, graceUrgent = 0, exitUrgent = 0
+        activeCycles.forEach(c => {
+          const info = cycleDaysInfo(c)
+          if (c.status === 'grace_period') {
+            if (info.graceDaysLeft <= 0) exceededGrace++
+            else if (info.graceDaysLeft <= 10) graceUrgent++
+          }
+          if (c.status === 'exit_visa_issued' && info.exitDaysLeft !== null && info.exitDaysLeft <= 5) exitUrgent++
+        })
+        const shownList = (cycleView === 'active' ? activeCycles : completedCycles).filter(c =>
+          !cycleSearch.trim() || c.person_name.toLowerCase().includes(cycleSearch.toLowerCase()) || (c.passport_number || '').toLowerCase().includes(cycleSearch.toLowerCase())
+        )
+        const stageDot = (done: boolean, label: string, color: string) => (
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flex:1}}>
+            <div style={{width:22,height:22,borderRadius:'50%',background:done?color:'#e5e7eb',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:11,fontWeight:700}}>{done?'✓':''}</div>
+            <span style={{fontSize:10,color:done?'#111827':'#9ca3af',fontWeight:done?700:400,textAlign:'center'}}>{label}</span>
+          </div>
+        )
+        const stageLine = (done: boolean) => <div style={{flex:1,height:3,background:done?'#15803d':'#e5e7eb',borderRadius:2,marginTop:10}}/>
+        const inputSm = { padding:'7px 10px', borderRadius:8, border:'2px solid #d1d5db', fontSize:12, color:'#111827', background:'#fff' }
+        return (
+          <div>
+            {/* تنبيهات الدورات */}
+            {(exceededGrace > 0 || graceUrgent > 0 || exitUrgent > 0) && (
+              <div style={{background:'#fff',border:'1px solid #fca5a5',borderRadius:12,padding:'14px 20px',marginBottom:16,display:'flex',gap:12,flexWrap:'wrap',alignItems:'center'}}>
+                <span style={{fontSize:14,fontWeight:700,color:'#111827'}}>⚠ تنبيهات عاجلة:</span>
+                {exceededGrace > 0 && <span style={{background:'#dc2626',color:'#fff',padding:'5px 14px',borderRadius:20,fontSize:12,fontWeight:700}}>{exceededGrace} تجاوز فترة السماح!</span>}
+                {graceUrgent > 0 && <span style={{background:'#fee2e2',color:'#dc2626',padding:'5px 14px',borderRadius:20,fontSize:12,fontWeight:700}}>{graceUrgent} متبقٍ له ≤ 10 أيام من فترة السماح</span>}
+                {exitUrgent > 0 && <span style={{background:'#fef9c3',color:'#b45309',padding:'5px 14px',borderRadius:20,fontSize:12,fontWeight:700}}>{exitUrgent} فيزا مغادرة تنتهي خلال ≤ 5 أيام — يجب السفر!</span>}
+              </div>
+            )}
+
+            <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
+              <div style={{padding:'14px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                <h2 style={{margin:0,fontSize:16,fontWeight:700,color:'#111827'}}>دورات المغادرة والعودة</h2>
+                <div style={{display:'flex',gap:4,background:'#e5e7eb',padding:3,borderRadius:8}}>
+                  <button onClick={()=>setCycleView('active')} style={{padding:'5px 14px',fontSize:12,border:'none',borderRadius:6,cursor:'pointer',fontWeight:600,background:cycleView==='active'?'#fff':'transparent',color:cycleView==='active'?'#1e40af':'#6b7280'}}>نشطة ({activeCycles.length})</button>
+                  <button onClick={()=>setCycleView('completed')} style={{padding:'5px 14px',fontSize:12,border:'none',borderRadius:6,cursor:'pointer',fontWeight:600,background:cycleView==='completed'?'#fff':'transparent',color:cycleView==='completed'?'#1e40af':'#6b7280'}}>مكتملة ({completedCycles.length})</button>
+                </div>
+                <input placeholder="بحث بالاسم أو الجواز..." value={cycleSearch} onChange={e=>setCycleSearch(e.target.value)}
+                  style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#111827',minWidth:190}}/>
+                {!readOnly && cycleView === 'active' && (
+                  <button onClick={()=>setShowCycleForm(!showCycleForm)}
+                    style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:13,fontWeight:600,marginRight:'auto'}}>
+                    {showCycleForm ? 'إلغاء' : '+ بدء دورة جديدة'}
+                  </button>
+                )}
+              </div>
+
+              {/* نموذج بدء دورة */}
+              {showCycleForm && !readOnly && (
+                <div style={{padding:'18px 20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:12,marginBottom:12}}>
+                    <div>
+                      <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>اسم الشخص *</label>
+                      <input value={cycleForm.person_name} onChange={e=>setCycleForm({...cycleForm,person_name:e.target.value})} style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
+                    </div>
+                    <div>
+                      <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>رقم الجواز</label>
+                      <input value={cycleForm.passport_number} onChange={e=>setCycleForm({...cycleForm,passport_number:e.target.value})} style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
+                    </div>
+                    <div>
+                      <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الجنسية</label>
+                      <select value={cycleForm.nationality} onChange={e=>setCycleForm({...cycleForm,nationality:e.target.value})} style={{...inputSm,width:'100%',boxSizing:'border-box'}}>
+                        <option value="">اختر...</option>
+                        <option value="صيني">صيني</option>
+                        <option value="باكستاني">باكستاني</option>
+                        <option value="أخرى">أخرى</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ انتهاء الفيزا *</label>
+                      <input type="date" value={cycleForm.visa_expired_date} onChange={e=>setCycleForm({...cycleForm,visa_expired_date:e.target.value})} style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
+                    </div>
+                  </div>
+                  <button onClick={createCycle} disabled={cycleSaving}
+                    style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'9px 22px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                    {cycleSaving ? 'جارٍ الحفظ...' : 'بدء الدورة (تبدأ فترة السماح 60 يوماً)'}
+                  </button>
+                </div>
+              )}
+
+              {/* عرض الدورات */}
+              {shownList.length === 0 ? (
+                <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>
+                  {cycleView === 'active' ? 'لا توجد دورات نشطة' : 'لا توجد دورات مكتملة'}
+                </div>
+              ) : cycleView === 'completed' ? (
+                <div style={{overflowX:'auto'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                    <thead>
+                      <tr style={{background:'#f3f4f6'}}>
+                        {['الاسم','الجواز','الجنسية','انتهاء الفيزا','فيزا المغادرة','المغادرة','العودة','الفيزا الجديدة',''].map((h,i)=>(
+                          <th key={i} style={{padding:'10px 12px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shownList.map(c => (
+                        <tr key={c.id} style={{borderBottom:'1px solid #e5e7eb'}}>
+                          <td style={{padding:'9px 12px',fontWeight:600,color:'#111827'}}>{c.person_name}</td>
+                          <td style={{padding:'9px 12px',color:'#6b7280',direction:'ltr',textAlign:'right'}}>{c.passport_number||'—'}</td>
+                          <td style={{padding:'9px 12px',color:'#6b7280'}}>{c.nationality||'—'}</td>
+                          <td style={{padding:'9px 12px',color:'#6b7280'}}>{new Date(c.visa_expired_date).toLocaleDateString('ar-IQ')}</td>
+                          <td style={{padding:'9px 12px',color:'#6b7280'}}>{c.exit_visa_issued_date?new Date(c.exit_visa_issued_date).toLocaleDateString('ar-IQ'):'—'}</td>
+                          <td style={{padding:'9px 12px',color:'#6b7280'}}>{c.departure_date?new Date(c.departure_date).toLocaleDateString('ar-IQ'):'—'}</td>
+                          <td style={{padding:'9px 12px',color:'#15803d',fontWeight:600}}>{c.return_date?new Date(c.return_date).toLocaleDateString('ar-IQ'):'—'}</td>
+                          <td style={{padding:'9px 12px'}}>{c.new_visa_obtained?<span style={{background:'#dcfce7',color:'#15803d',padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:700}}>✓ {c.new_visa_type||''} {c.new_visa_number||''}</span>:'—'}</td>
+                          <td style={{padding:'9px 12px'}}>
+                            {!readOnly && <button onClick={()=>deleteCycle(c)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11}}>حذف</button>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:16}}>
+                  {shownList.map(c => {
+                    const info = cycleDaysInfo(c)
+                    const graceExceeded = c.status === 'grace_period' && info.graceDaysLeft <= 0
+                    const gracePct = Math.max(0, Math.min(100, Math.round(((60 - info.graceDaysLeft) / 60) * 100)))
+                    const si = stageInputs[c.id] || {}
+                    return (
+                      <div key={c.id} style={{border: graceExceeded ? '2px solid #dc2626' : '1px solid #e5e7eb', borderRadius:12, padding:'16px 18px', background: graceExceeded ? '#fef2f2' : '#fff'}}>
+                        {/* رأس البطاقة */}
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:12,flexWrap:'wrap'}}>
+                          <div>
+                            <div style={{fontSize:15,fontWeight:700,color:'#111827'}}>{c.person_name}</div>
+                            <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>
+                              {c.nationality || '—'} {c.passport_number && <span style={{direction:'ltr',display:'inline-block'}}>• {c.passport_number}</span>} • انتهت فيزته: {new Date(c.visa_expired_date).toLocaleDateString('ar-IQ')}
+                            </div>
+                          </div>
+                          <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+                            {c.status === 'grace_period' && (graceExceeded
+                              ? <span style={{background:'#dc2626',color:'#fff',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>تجاوز فترة السماح بـ {Math.abs(info.graceDaysLeft)} يوم!</span>
+                              : <span style={{background:info.graceDaysLeft<=10?'#fee2e2':'#fef9c3',color:info.graceDaysLeft<=10?'#dc2626':'#b45309',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>متبقي {info.graceDaysLeft} يوم من فترة السماح</span>
+                            )}
+                            {c.status === 'exit_visa_issued' && info.exitDaysLeft !== null && (
+                              info.exitDaysLeft <= 0
+                                ? <span style={{background:'#dc2626',color:'#fff',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>فيزا المغادرة منتهية!</span>
+                                : <span style={{background:info.exitDaysLeft<=5?'#fee2e2':'#dbeafe',color:info.exitDaysLeft<=5?'#dc2626':'#1d4ed8',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>{info.exitDaysLeft<=5?'⚠ ':''}متبقي {info.exitDaysLeft} يوم على فيزا المغادرة</span>
+                            )}
+                            {c.status === 'departed' && <span style={{background:'#ede9fe',color:'#7c3aed',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>خارج العراق</span>}
+                            {c.new_visa_obtained && <span style={{background:'#dcfce7',color:'#15803d',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>✓ حاصل على الفيزا الجديدة {c.new_visa_type ? `(${c.new_visa_type})` : ''}</span>}
+                            {!readOnly && <button onClick={()=>deleteCycle(c)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11}}>حذف</button>}
+                          </div>
+                        </div>
+
+                        {/* شريط فترة السماح */}
+                        {c.status === 'grace_period' && !graceExceeded && (
+                          <div style={{marginBottom:14}}>
+                            <div style={{height:8,background:'#e5e7eb',borderRadius:4,overflow:'hidden'}}>
+                              <div style={{height:'100%',width:gracePct+'%',background:info.graceDaysLeft<=10?'#dc2626':info.graceDaysLeft<=25?'#eab308':'#15803d',borderRadius:4,transition:'width 0.3s'}}/>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* الخط الزمني */}
+                        <div style={{display:'flex',alignItems:'flex-start',marginBottom:16,padding:'0 8px'}}>
+                          {stageDot(true, 'فترة السماح', '#b45309')}
+                          {stageLine(!!c.exit_visa_issued_date)}
+                          {stageDot(!!c.exit_visa_issued_date, 'فيزا المغادرة', '#1d4ed8')}
+                          {stageLine(c.new_visa_obtained)}
+                          {stageDot(c.new_visa_obtained, 'الفيزا الجديدة', '#15803d')}
+                          {stageLine(!!c.departure_date)}
+                          {stageDot(!!c.departure_date, 'غادر العراق', '#7c3aed')}
+                          {stageLine(!!c.return_date)}
+                          {stageDot(!!c.return_date, 'عاد للعراق', '#0891b2')}
+                        </div>
+
+                        {/* إجراءات المرحلة الحالية */}
+                        {!readOnly && (
+                          <div style={{display:'flex',gap:16,flexWrap:'wrap',alignItems:'flex-end',borderTop:'1px solid #f3f4f6',paddingTop:12}}>
+                            {c.status === 'grace_period' && (
+                              <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ إصدار فيزا المغادرة</label>
+                                  <input type="date" value={si.exitDate||''} onChange={e=>updateStageInput(c.id,'exitDate',e.target.value)} style={inputSm}/>
+                                </div>
+                                <button onClick={()=>registerExitVisa(c)} style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>تسجيل فيزا المغادرة</button>
+                              </div>
+                            )}
+                            {c.status === 'exit_visa_issued' && (
+                              <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ المغادرة</label>
+                                  <input type="date" value={si.depDate||''} onChange={e=>updateStageInput(c.id,'depDate',e.target.value)} style={inputSm}/>
+                                </div>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>ملاحظة (وجهة/رحلة، اختياري)</label>
+                                  <input value={si.depNotes||''} onChange={e=>updateStageInput(c.id,'depNotes',e.target.value)} placeholder="مثال: دبي — FZ374" style={{...inputSm,minWidth:170}}/>
+                                </div>
+                                <button onClick={()=>registerDeparture(c)} style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>تسجيل المغادرة</button>
+                              </div>
+                            )}
+                            {c.status === 'departed' && (
+                              <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ العودة إلى العراق</label>
+                                  <input type="date" value={si.retDate||''} onChange={e=>updateStageInput(c.id,'retDate',e.target.value)} style={inputSm}/>
+                                </div>
+                                <button onClick={()=>registerReturn(c)} style={{background:'#0891b2',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>تسجيل العودة (إكمال الدورة)</button>
+                              </div>
+                            )}
+                            {!c.new_visa_obtained && (
+                              <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap',marginRight:'auto'}}>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>نوع الفيزا الجديدة</label>
+                                  <select value={si.nvType||'سياحية'} onChange={e=>updateStageInput(c.id,'nvType',e.target.value)} style={inputSm}>
+                                    <option value="سياحية">سياحية</option>
+                                    <option value="متعددة">متعددة</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>رقمها (اختياري)</label>
+                                  <input value={si.nvNumber||''} onChange={e=>updateStageInput(c.id,'nvNumber',e.target.value)} style={{...inputSm,width:120}}/>
+                                </div>
+                                <button onClick={()=>saveNewVisaInfo(c)} style={{background:'#dcfce7',color:'#15803d',border:'1px solid #86efac',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:12,fontWeight:700}}>✓ حصل على الفيزا الجديدة</button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
