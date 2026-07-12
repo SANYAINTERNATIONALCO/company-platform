@@ -54,6 +54,7 @@ interface VisaCycle {
   person_name: string
   passport_number: string | null
   nationality: string | null
+  group_name: string | null
   visa_expired_date: string
   exit_visa_issued_date: string | null
   new_visa_obtained: boolean
@@ -111,7 +112,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   const [cycles, setCycles] = useState<VisaCycle[]>([])
   const [cycleView, setCycleView] = useState<'active' | 'completed'>('active')
   const [showCycleForm, setShowCycleForm] = useState(false)
-  const [cycleForm, setCycleForm] = useState({ person_name: '', passport_number: '', nationality: '', visa_expired_date: '' })
+  const [cycleForm, setCycleForm] = useState({ person_name: '', passport_number: '', nationality: '', visa_expired_date: '', group_name: '' })
   const [cycleSearch, setCycleSearch] = useState('')
   const [cycleSaving, setCycleSaving] = useState(false)
   const [stageInputs, setStageInputs] = useState<Record<string, any>>({})
@@ -156,12 +157,13 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
       passport_number: cycleForm.passport_number || null,
       nationality: cycleForm.nationality || null,
       visa_expired_date: cycleForm.visa_expired_date,
+      group_name: cycleForm.group_name.trim() || null,
       status: 'grace_period'
     }])
     if (error) alert('خطأ: ' + error.message)
     else {
       await logActivity('بدء دورة مغادرة وعودة', 'visa', `بدء دورة لـ ${cycleForm.person_name}`)
-      setCycleForm({ person_name: '', passport_number: '', nationality: '', visa_expired_date: '' })
+      setCycleForm({ person_name: '', passport_number: '', nationality: '', visa_expired_date: '', group_name: '' })
       setShowCycleForm(false)
       await loadCycles()
     }
@@ -221,6 +223,76 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
 
   function updateStageInput(cycleId: string, key: string, value: any) {
     setStageInputs(prev => ({ ...prev, [cycleId]: { ...(prev[cycleId] || {}), [key]: value } }))
+  }
+
+  // ===== إدارة المجموعات =====
+  async function addToGroup(c: VisaCycle, groupName: string) {
+    if (!groupName.trim()) { alert('يرجى اختيار أو كتابة اسم المجموعة'); return }
+    await supabase.from('visa_cycles').update({ group_name: groupName.trim() }).eq('id', c.id)
+    await logActivity('ضم لمجموعة مغادرة', 'visa', `ضم ${c.person_name} إلى مجموعة ${groupName}`)
+    setStageInputs(prev => ({ ...prev, [c.id]: {} }))
+    await loadCycles()
+  }
+
+  async function removeFromGroup(c: VisaCycle) {
+    if (!confirm(`فصل ${c.person_name} عن المجموعة ليصبح دورة فردية مستقلة؟`)) return
+    await supabase.from('visa_cycles').update({ group_name: null }).eq('id', c.id)
+    await logActivity('فصل عن مجموعة مغادرة', 'visa', `فصل ${c.person_name} عن مجموعته`)
+    await loadCycles()
+  }
+
+  async function groupRegisterExitVisa(gname: string) {
+    const date = stageInputs['grp:' + gname]?.exitDate
+    if (!date) { alert('يرجى تحديد تاريخ إصدار فيزا المغادرة'); return }
+    await supabase.from('visa_cycles').update({ exit_visa_issued_date: date, status: 'exit_visa_issued' }).eq('group_name', gname).eq('status', 'grace_period')
+    await logActivity('تسجيل فيزا مغادرة جماعية', 'visa', `فيزا مغادرة لمجموعة ${gname}`)
+    setStageInputs(prev => ({ ...prev, ['grp:' + gname]: {} }))
+    await loadCycles()
+  }
+
+  async function groupRegisterDeparture(gname: string) {
+    const si = stageInputs['grp:' + gname] || {}
+    if (!si.depDate) { alert('يرجى تحديد تاريخ المغادرة'); return }
+    await supabase.from('visa_cycles').update({ departure_date: si.depDate, departure_notes: si.depNotes || null, status: 'departed' }).eq('group_name', gname).eq('status', 'exit_visa_issued')
+    await logActivity('تسجيل مغادرة جماعية', 'visa', `مجموعة ${gname} غادرت العراق`)
+    setStageInputs(prev => ({ ...prev, ['grp:' + gname]: {} }))
+    await loadCycles()
+  }
+
+  async function groupRegisterReturn(gname: string) {
+    const date = stageInputs['grp:' + gname]?.retDate
+    if (!date) { alert('يرجى تحديد تاريخ العودة'); return }
+    if (!confirm(`تسجيل عودة كل أفراد مجموعة ${gname}؟ ستكتمل دوراتهم وتُنقل للأرشيف.`)) return
+    await supabase.from('visa_cycles').update({ return_date: date, status: 'completed' }).eq('group_name', gname).eq('status', 'departed')
+    await logActivity('تسجيل عودة جماعية', 'visa', `مجموعة ${gname} عادت إلى العراق`)
+    setStageInputs(prev => ({ ...prev, ['grp:' + gname]: {} }))
+    await loadCycles()
+  }
+
+  async function groupSaveNewVisa(gname: string) {
+    const si = stageInputs['grp:' + gname] || {}
+    await supabase.from('visa_cycles').update({ new_visa_obtained: true, new_visa_type: si.nvType || 'سياحية' }).eq('group_name', gname).neq('status', 'completed')
+    await logActivity('تسجيل فيزا جديدة جماعية', 'visa', `مجموعة ${gname} حصلت على الفيزا الجديدة`)
+    setStageInputs(prev => ({ ...prev, ['grp:' + gname]: {} }))
+    await loadCycles()
+  }
+
+  // بدء دورة مباشرة لمخالف من التأشيرات السياحية
+  async function startCycleFromTourist(visa: TouristVisa) {
+    const exists = cycles.find(c => c.status !== 'completed' && c.passport_number && c.passport_number === visa.passport_number)
+    if (exists) { alert(`${visa.full_name} لديه دورة نشطة بالفعل`); return }
+    if (!confirm(`بدء دورة مغادرة وعودة لـ ${visa.full_name}؟ ستبدأ فترة السماح (60 يوماً) من تاريخ انتهاء فيزته.`)) return
+    const natLabel = visa.nationality === 'chinese' ? 'صيني' : visa.nationality === 'pakistani' ? 'باكستاني' : (visa.nationality || 'أخرى')
+    await supabase.from('visa_cycles').insert([{
+      person_name: visa.full_name,
+      passport_number: visa.passport_number || null,
+      nationality: natLabel,
+      visa_expired_date: visa.expiry_date,
+      status: 'grace_period'
+    }])
+    await logActivity('بدء دورة مغادرة وعودة', 'visa', `بدء دورة للمخالف ${visa.full_name}`)
+    await loadCycles()
+    setActiveTab('cycles')
   }
 
   async function loadStats() {
@@ -805,7 +877,19 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                           </td>
                           <td style={{padding:'10px 14px'}}>
                             {!readOnly && (
-                              <button onClick={()=>deleteTouristVisa(visa.id)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:12,fontWeight:600}}>حذف</button>
+                              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                {(() => {
+                                  const exp = new Date(visa.expiry_date); exp.setHours(0,0,0,0)
+                                  const t = new Date(); t.setHours(0,0,0,0)
+                                  const isViolated = exp.getTime() <= t.getTime() || visa.status === 'violated'
+                                  const hasCycle = cycles.some(c => c.status !== 'completed' && c.passport_number && c.passport_number === visa.passport_number)
+                                  if (!isViolated) return null
+                                  return hasCycle
+                                    ? <span style={{background:'#dbeafe',color:'#1d4ed8',padding:'5px 10px',borderRadius:6,fontSize:11,fontWeight:700}}>في دورة نشطة</span>
+                                    : <button onClick={()=>startCycleFromTourist(visa)} style={{background:'#ede9fe',color:'#7c3aed',border:'1px solid #c4b5fd',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:700,whiteSpace:'nowrap'}}>بدء دورة مغادرة</button>
+                                })()}
+                                <button onClick={()=>deleteTouristVisa(visa.id)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:12,fontWeight:600}}>حذف</button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -964,8 +1048,29 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
           if (c.status === 'exit_visa_issued' && info.exitDaysLeft !== null && info.exitDaysLeft <= 5) exitUrgent++
         })
         const shownList = (cycleView === 'active' ? activeCycles : completedCycles).filter(c =>
-          !cycleSearch.trim() || c.person_name.toLowerCase().includes(cycleSearch.toLowerCase()) || (c.passport_number || '').toLowerCase().includes(cycleSearch.toLowerCase())
+          !cycleSearch.trim() || c.person_name.toLowerCase().includes(cycleSearch.toLowerCase()) || (c.passport_number || '').toLowerCase().includes(cycleSearch.toLowerCase()) || (c.group_name || '').toLowerCase().includes(cycleSearch.toLowerCase())
         )
+        const groupsMap: Record<string, VisaCycle[]> = {}
+        const individualList: VisaCycle[] = []
+        shownList.forEach(c => {
+          if (cycleView === 'active' && c.group_name) { (groupsMap[c.group_name] = groupsMap[c.group_name] || []).push(c) }
+          else individualList.push(c)
+        })
+        const existingGroups = [...new Set(cycles.filter(x => x.group_name && x.status !== 'completed').map(x => x.group_name!))]
+        const cycleStatusBadge = (c: VisaCycle) => {
+          const info = cycleDaysInfo(c)
+          if (c.status === 'grace_period') {
+            if (info.graceDaysLeft <= 0) return <span style={{background:'#dc2626',color:'#fff',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>تجاوز السماح بـ {Math.abs(info.graceDaysLeft)} يوم!</span>
+            return <span style={{background:info.graceDaysLeft<=10?'#fee2e2':'#fef9c3',color:info.graceDaysLeft<=10?'#dc2626':'#b45309',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>سماح: {info.graceDaysLeft} يوم</span>
+          }
+          if (c.status === 'exit_visa_issued') {
+            const d = info.exitDaysLeft
+            if (d !== null && d <= 0) return <span style={{background:'#dc2626',color:'#fff',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>فيزا المغادرة منتهية!</span>
+            return <span style={{background:(d!==null&&d<=5)?'#fee2e2':'#dbeafe',color:(d!==null&&d<=5)?'#dc2626':'#1d4ed8',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>مغادرة: {d} يوم</span>
+          }
+          if (c.status === 'departed') return <span style={{background:'#ede9fe',color:'#7c3aed',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>خارج العراق</span>
+          return null
+        }
         const stageDot = (done: boolean, label: string, color: string) => (
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flex:1}}>
             <div style={{width:22,height:22,borderRadius:'50%',background:done?color:'#e5e7eb',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:11,fontWeight:700}}>{done?'✓':''}</div>
@@ -1006,7 +1111,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
               {/* نموذج بدء دورة */}
               {showCycleForm && !readOnly && (
                 <div style={{padding:'18px 20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:12,marginBottom:12}}>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr',gap:12,marginBottom:12}}>
                     <div>
                       <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>اسم الشخص *</label>
                       <input value={cycleForm.person_name} onChange={e=>setCycleForm({...cycleForm,person_name:e.target.value})} style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
@@ -1027,6 +1132,13 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                     <div>
                       <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ انتهاء الفيزا *</label>
                       <input type="date" value={cycleForm.visa_expired_date} onChange={e=>setCycleForm({...cycleForm,visa_expired_date:e.target.value})} style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
+                    </div>
+                    <div>
+                      <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>المجموعة (اختياري)</label>
+                      <input list="cycle-groups" value={cycleForm.group_name} onChange={e=>setCycleForm({...cycleForm,group_name:e.target.value})} placeholder="اسم مجموعة موجودة أو جديدة" style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
+                      <datalist id="cycle-groups">
+                        {[...new Set(cycles.filter(x=>x.group_name&&x.status!=='completed').map(x=>x.group_name!))].map(g=><option key={g} value={g}/>)}
+                      </datalist>
                     </div>
                   </div>
                   <button onClick={createCycle} disabled={cycleSaving}
@@ -1072,7 +1184,88 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                 </div>
               ) : (
                 <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:16}}>
-                  {shownList.map(c => {
+                  {/* بطاقات المجموعات */}
+                  {Object.entries(groupsMap).map(([gname, members]) => {
+                    const gsi = stageInputs['grp:' + gname] || {}
+                    const anyGrace = members.some(m => m.status === 'grace_period')
+                    const anyExit = members.some(m => m.status === 'exit_visa_issued')
+                    const anyDeparted = members.some(m => m.status === 'departed')
+                    const anyNoNewVisa = members.some(m => !m.new_visa_obtained)
+                    return (
+                      <div key={gname} style={{border:'2px solid #0891b2',borderRadius:12,padding:'16px 18px',background:'#f0fdff'}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
+                          <div style={{display:'flex',alignItems:'center',gap:10}}>
+                            <span style={{background:'#0891b2',color:'#fff',padding:'4px 14px',borderRadius:20,fontSize:13,fontWeight:700}}>👥 مجموعة: {gname}</span>
+                            <span style={{fontSize:12,color:'#6b7280',fontWeight:600}}>{members.length} أشخاص</span>
+                          </div>
+                        </div>
+                        {/* أفراد المجموعة */}
+                        <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:12}}>
+                          {members.map(m => (
+                            <div key={m.id} style={{display:'flex',alignItems:'center',gap:10,background:'#fff',border:'1px solid #e5e7eb',borderRadius:8,padding:'8px 12px',flexWrap:'wrap'}}>
+                              <span style={{fontWeight:700,color:'#111827',fontSize:13}}>{m.person_name}</span>
+                              <span style={{fontSize:11,color:'#6b7280',direction:'ltr'}}>{m.passport_number||''}</span>
+                              <span style={{fontSize:11,color:'#9ca3af'}}>{m.nationality||''}</span>
+                              {cycleStatusBadge(m)}
+                              {m.new_visa_obtained && <span style={{background:'#dcfce7',color:'#15803d',padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:700}}>✓ فيزا جديدة</span>}
+                              {!readOnly && (
+                                <div style={{display:'flex',gap:5,marginRight:'auto'}}>
+                                  <button onClick={()=>removeFromGroup(m)} style={{background:'#fef9c3',color:'#b45309',border:'none',borderRadius:6,padding:'3px 10px',cursor:'pointer',fontSize:10,fontWeight:700}}>فصل عن المجموعة</button>
+                                  <button onClick={()=>deleteCycle(m)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'3px 8px',cursor:'pointer',fontSize:10}}>حذف</button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        {/* إجراءات جماعية */}
+                        {!readOnly && (
+                          <div style={{display:'flex',gap:14,flexWrap:'wrap',alignItems:'flex-end',borderTop:'1px solid #cffafe',paddingTop:12}}>
+                            {anyGrace && (
+                              <div style={{display:'flex',gap:6,alignItems:'flex-end'}}>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>تاريخ فيزا المغادرة (للجميع)</label>
+                                  <input type="date" value={gsi.exitDate||''} onChange={e=>updateStageInput('grp:'+gname,'exitDate',e.target.value)} style={inputSm}/>
+                                </div>
+                                <button onClick={()=>groupRegisterExitVisa(gname)} style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:600}}>فيزا مغادرة للجميع</button>
+                              </div>
+                            )}
+                            {anyExit && (
+                              <div style={{display:'flex',gap:6,alignItems:'flex-end',flexWrap:'wrap'}}>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>تاريخ المغادرة (للجميع)</label>
+                                  <input type="date" value={gsi.depDate||''} onChange={e=>updateStageInput('grp:'+gname,'depDate',e.target.value)} style={inputSm}/>
+                                </div>
+                                <input value={gsi.depNotes||''} onChange={e=>updateStageInput('grp:'+gname,'depNotes',e.target.value)} placeholder="وجهة/رحلة (اختياري)" style={{...inputSm,width:140}}/>
+                                <button onClick={()=>groupRegisterDeparture(gname)} style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:600}}>تسجيل مغادرة الجميع</button>
+                              </div>
+                            )}
+                            {anyDeparted && (
+                              <div style={{display:'flex',gap:6,alignItems:'flex-end'}}>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>تاريخ العودة (للجميع)</label>
+                                  <input type="date" value={gsi.retDate||''} onChange={e=>updateStageInput('grp:'+gname,'retDate',e.target.value)} style={inputSm}/>
+                                </div>
+                                <button onClick={()=>groupRegisterReturn(gname)} style={{background:'#0891b2',color:'#fff',border:'none',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:600}}>تسجيل عودة الجميع</button>
+                              </div>
+                            )}
+                            {anyNoNewVisa && (
+                              <div style={{display:'flex',gap:6,alignItems:'flex-end',marginRight:'auto'}}>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>نوع الفيزا الجديدة</label>
+                                  <select value={gsi.nvType||'سياحية'} onChange={e=>updateStageInput('grp:'+gname,'nvType',e.target.value)} style={inputSm}>
+                                    <option value="سياحية">سياحية</option>
+                                    <option value="متعددة">متعددة</option>
+                                  </select>
+                                </div>
+                                <button onClick={()=>groupSaveNewVisa(gname)} style={{background:'#dcfce7',color:'#15803d',border:'1px solid #86efac',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:700}}>✓ الجميع حصلوا على الفيزا</button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {individualList.map(c => {
                     const info = cycleDaysInfo(c)
                     const graceExceeded = c.status === 'grace_period' && info.graceDaysLeft <= 0
                     const gracePct = Math.max(0, Math.min(100, Math.round(((60 - info.graceDaysLeft) / 60) * 100)))
@@ -1175,6 +1368,16 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                 <button onClick={()=>saveNewVisaInfo(c)} style={{background:'#dcfce7',color:'#15803d',border:'1px solid #86efac',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:12,fontWeight:700}}>✓ حصل على الفيزا الجديدة</button>
                               </div>
                             )}
+                            <div style={{display:'flex',gap:6,alignItems:'flex-end'}}>
+                              <div>
+                                <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>ضم لمجموعة</label>
+                                <input list="cycle-groups-join" value={si.grpName||''} onChange={e=>updateStageInput(c.id,'grpName',e.target.value)} placeholder="اسم مجموعة موجودة أو جديدة" style={{...inputSm,width:170}}/>
+                                <datalist id="cycle-groups-join">
+                                  {existingGroups.map(g=><option key={g} value={g}/>)}
+                                </datalist>
+                              </div>
+                              <button onClick={()=>addToGroup(c, si.grpName||'')} style={{background:'#cffafe',color:'#0891b2',border:'1px solid #67e8f9',borderRadius:8,padding:'8px 12px',cursor:'pointer',fontSize:11,fontWeight:700}}>👥 ضم</button>
+                            </div>
                           </div>
                         )}
                       </div>
