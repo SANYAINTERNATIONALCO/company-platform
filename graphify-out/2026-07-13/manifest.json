@@ -1,0 +1,192 @@
+{
+  ".claude/settings.json": {
+    "mtime": 1783953832.4249904,
+    "ast_hash": "99302fa7a00338c78c7918dc9087a179",
+    "semantic_hash": "99302fa7a00338c78c7918dc9087a179"
+  },
+  "android/app/build.gradle": {
+    "mtime": 1782133348.7327073,
+    "ast_hash": "77e7a8c3c53a99e8e32e6789466b2a52",
+    "semantic_hash": "77e7a8c3c53a99e8e32e6789466b2a52"
+  },
+  "android/app/capacitor.build.gradle": {
+    "mtime": 1782133349.0479212,
+    "ast_hash": "b863e425fbde80251bd3c68ac8ccba02",
+    "semantic_hash": "b863e425fbde80251bd3c68ac8ccba02"
+  },
+  "android/app/src/androidTest/java/com/getcapacitor/myapp/ExampleInstrumentedTest.java": {
+    "mtime": 1781859670.0,
+    "ast_hash": "fbaf7cc870c663eb52dcf218531c439d",
+    "semantic_hash": "fbaf7cc870c663eb52dcf218531c439d"
+  },
+  "android/app/src/main/assets/capacitor.config.json": {
+    "mtime": 1782133348.9276085,
+    "ast_hash": "5b3278f75dd3306eb415f8f2f8ff6671",
+    "semantic_hash": "5b3278f75dd3306eb415f8f2f8ff6671"
+  },
+  "android/app/src/main/assets/capacitor.plugins.json": {
+    "mtime": 1782133349.000172,
+    "ast_hash": "58e0494c51d30eb3494f7c9198986bb9",
+    "semantic_hash": "58e0494c51d30eb3494f7c9198986bb9"
+  },
+  "android/app/src/main/assets/public/cordova.js": {
+    "mtime": 1782133349.034657,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "android/app/src/main/assets/public/cordova_plugins.js": {
+    "mtime": 1782133349.0356584,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "android/app/src/main/java/com/sanya/platform/MainActivity.java": {
+    "mtime": 1782133348.7267075,
+    "ast_hash": "75ff6dd35700ea13c08f4b7134609330",
+    "semantic_hash": "75ff6dd35700ea13c08f4b7134609330"
+  },
+  "android/app/src/test/java/com/getcapacitor/myapp/ExampleUnitTest.java": {
+    "mtime": 1781859670.0,
+    "ast_hash": "e91b4501c14da821682fa5c26a16d616",
+    "semantic_hash": "e91b4501c14da821682fa5c26a16d616"
+  },
+  "android/build.gradle": {
+    "mtime": 1781859670.0,
+    "ast_hash": "682315a426653617c6a74fc12bef55b6",
+    "semantic_hash": "682315a426653617c6a74fc12bef55b6"
+  },
+  "android/capacitor-cordova-android-plugins/build.gradle": {
+    "mtime": 1782133349.0523362,
+    "ast_hash": "2af61653d70c95d20802c8b5c433ba90",
+    "semantic_hash": "2af61653d70c95d20802c8b5c433ba90"
+  },
+  "android/capacitor-cordova-android-plugins/cordova.variables.gradle": {
+    "mtime": 1782133349.053375,
+    "ast_hash": "d2372a0ae9aa60abb8d03e7f06bf9194",
+    "semantic_hash": "d2372a0ae9aa60abb8d03e7f06bf9194"
+  },
+  "android/capacitor.settings.gradle": {
+    "mtime": 1782133349.0469122,
+    "ast_hash": "455ebb7f9fe84a6974da6bdae43097c2",
+    "semantic_hash": "455ebb7f9fe84a6974da6bdae43097c2"
+  },
+  "android/gradlew": {
+    "mtime": 1781859670.0,
+    "ast_hash": "794669d78aef1dd5c7d889ef618b311a",
+    "semantic_hash": "794669d78aef1dd5c7d889ef618b311a"
+  },
+  "android/settings.gradle": {
+    "mtime": 1781859670.0,
+    "ast_hash": "f6cd925b3f859e23c3d819fe2459e0e4",
+    "semantic_hash": "f6cd925b3f859e23c3d819fe2459e0e4"
+  },
+  "android/variables.gradle": {
+    "mtime": 1781859670.0,
+    "ast_hash": "4b3fce8ea2a515a9d2e47e74757172ec",
+    "semantic_hash": "4b3fce8ea2a515a9d2e47e74757172ec"
+  },
+  "app/components/ActivityLog.tsx": {
+    "mtime": 1783591426.8221304,
+    "ast_hash": "82b317d5204d159edebd02bc655ec68a",
+    "semantic_hash": "82b317d5204d159edebd02bc655ec68a"
+  },
+  "app/components/Attendance.tsx": {
+    "mtime": 1783696682.4449246,
+    "ast_hash": "f40b604315781f8100c5f826ee0fe8b3",
+    "semantic_hash": "f40b604315781f8100c5f826ee0fe8b3"
+  },
+  "app/components/Contracts.tsx": {
+    "mtime": 1783680323.8426456,
+    "ast_hash": "b2ea4115d7e8815a8cf97e952fec2392",
+    "semantic_hash": "b2ea4115d7e8815a8cf97e952fec2392"
+  },
+  "app/components/Custody.tsx": {
+    "mtime": 1783679612.4831674,
+    "ast_hash": "50b00601862136cc41c07b9360dfc32e",
+    "semantic_hash": "50b00601862136cc41c07b9360dfc32e"
+  },
+  "app/components/Documents.tsx": {
+    "mtime": 1783420323.57839,
+    "ast_hash": "de5c6396a8692806d5b8a490aef71343",
+    "semantic_hash": "de5c6396a8692806d5b8a490aef71343"
+  },
+  "app/components/Employees.tsx": {
+    "mtime": 1783696608.4596975,
+    "ast_hash": "ddb8c3994d89593ad5bf236c02f46b27",
+    "semantic_hash": "ddb8c3994d89593ad5bf236c02f46b27"
+  },
+  "app/components/Finance.tsx": {
+    "mtime": 1783335896.0014575,
+    "ast_hash": "506b26e36327917c524f8a6ddb9b0009",
+    "semantic_hash": "506b26e36327917c524f8a6ddb9b0009"
+  },
+  "app/components/Payroll.tsx": {
+    "mtime": 1783335876.0348785,
+    "ast_hash": "177afb711fe2b64c625d1f5810573d0d",
+    "semantic_hash": "177afb711fe2b64c625d1f5810573d0d"
+  },
+  "app/components/Receipts.tsx": {
+    "mtime": 1783335901.7939377,
+    "ast_hash": "55ad4d3e35cf60a52597717e221487be",
+    "semantic_hash": "55ad4d3e35cf60a52597717e221487be"
+  },
+  "app/components/Reports.tsx": {
+    "mtime": 1783759987.3463223,
+    "ast_hash": "e0168f887a021c05cf67696ad6dee57c",
+    "semantic_hash": "e0168f887a021c05cf67696ad6dee57c"
+  },
+  "app/components/Tasks.tsx": {
+    "mtime": 1782747649.020401,
+    "ast_hash": "19c9692a5918e299235700940b817799",
+    "semantic_hash": "19c9692a5918e299235700940b817799"
+  },
+  "app/components/Visa.tsx": {
+    "mtime": 1783817103.196748,
+    "ast_hash": "bf38dcc77d092669fad395b4d4765d94",
+    "semantic_hash": "bf38dcc77d092669fad395b4d4765d94"
+  },
+  "app/layout.tsx": {
+    "mtime": 1780844792.4637587,
+    "ast_hash": "94c34ef68b3949a75807a0211ec2273c",
+    "semantic_hash": "94c34ef68b3949a75807a0211ec2273c"
+  },
+  "app/logActivity.ts": {
+    "mtime": 1783335864.8516648,
+    "ast_hash": "aec18e170eac6fc17fa6fa8759b91b5c",
+    "semantic_hash": "aec18e170eac6fc17fa6fa8759b91b5c"
+  },
+  "app/page.tsx": {
+    "mtime": 1783760566.0264442,
+    "ast_hash": "70cd95531cc9d256ef5ac3684e5801f5",
+    "semantic_hash": "70cd95531cc9d256ef5ac3684e5801f5"
+  },
+  "capacitor.config.ts": {
+    "mtime": 1782133337.8604567,
+    "ast_hash": "c502f85a5989d990d1edcf650091c74f",
+    "semantic_hash": "c502f85a5989d990d1edcf650091c74f"
+  },
+  "eslint.config.mjs": {
+    "mtime": 1780844792.1997333,
+    "ast_hash": "dfa1f5f6a7037bf39dc510f30b180002",
+    "semantic_hash": "dfa1f5f6a7037bf39dc510f30b180002"
+  },
+  "next.config.ts": {
+    "mtime": 1780844792.3935654,
+    "ast_hash": "9b77af189a21a7a64e4bd7a426f64176",
+    "semantic_hash": "9b77af189a21a7a64e4bd7a426f64176"
+  },
+  "package.json": {
+    "mtime": 1783725681.4748504,
+    "ast_hash": "d071d56a75e1183ecc11b768ea5770f2",
+    "semantic_hash": "d071d56a75e1183ecc11b768ea5770f2"
+  },
+  "postcss.config.mjs": {
+    "mtime": 1780844792.2497368,
+    "ast_hash": "239f3ebf717465dc636818a1a619398d",
+    "semantic_hash": "239f3ebf717465dc636818a1a619398d"
+  },
+  "tsconfig.json": {
+    "mtime": 1781156724.6021564,
+    "ast_hash": "3e6a1c33d72f56087ab3ede0c695337e",
+    "semantic_hash": "3e6a1c33d72f56087ab3ede0c695337e"
+  }
+}

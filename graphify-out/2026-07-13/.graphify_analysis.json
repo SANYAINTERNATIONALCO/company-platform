@@ -1,0 +1,411 @@
+{
+  "communities": {
+    "0": [
+      "app_components_contracts",
+      "app_components_contracts_contract",
+      "app_components_contracts_contracts",
+      "app_components_contracts_employee",
+      "app_components_contracts_supabase",
+      "app_components_custody",
+      "app_components_custody_custody",
+      "app_components_custody_custodyitem",
+      "app_components_custody_employee",
+      "app_components_custody_itemtypes",
+      "app_components_custody_supabase",
+      "app_components_documents",
+      "app_components_documents_doccontent",
+      "app_components_documents_doctypes",
+      "app_components_documents_documents",
+      "app_components_documents_employee",
+      "app_components_documents_issueddoc",
+      "app_components_documents_numbertoarabicwords",
+      "app_components_documents_signature",
+      "app_components_documents_supabase",
+      "app_components_employees",
+      "app_components_employees_employee",
+      "app_components_employees_employeefile",
+      "app_components_employees_employeenote",
+      "app_components_employees_employees",
+      "app_components_employees_filetypes",
+      "app_components_employees_supabase",
+      "app_logactivity",
+      "app_logactivity_logactivity",
+      "app_logactivity_supabase",
+      "app_page",
+      "app_page_home",
+      "app_page_supabase"
+    ],
+    "1": [
+      "ref",
+      "ref_dom",
+      "ref_dom_iterable",
+      "ref_esnext",
+      "tsconfig_compileroptions",
+      "tsconfig_compileroptions_allowjs",
+      "tsconfig_compileroptions_esmoduleinterop",
+      "tsconfig_compileroptions_incremental",
+      "tsconfig_compileroptions_isolatedmodules",
+      "tsconfig_compileroptions_jsx",
+      "tsconfig_compileroptions_lib",
+      "tsconfig_compileroptions_module",
+      "tsconfig_compileroptions_moduleresolution",
+      "tsconfig_compileroptions_noemit",
+      "tsconfig_compileroptions_paths",
+      "tsconfig_compileroptions_plugins",
+      "tsconfig_compileroptions_resolvejsonmodule",
+      "tsconfig_compileroptions_skiplibcheck",
+      "tsconfig_compileroptions_strict",
+      "tsconfig_compileroptions_target",
+      "tsconfig_paths"
+    ],
+    "2": [
+      "capacitor_android",
+      "capacitor_cli",
+      "capacitor_core",
+      "next",
+      "package_dependencies",
+      "package_dependencies_capacitor_android",
+      "package_dependencies_capacitor_cli",
+      "package_dependencies_capacitor_core",
+      "package_dependencies_next",
+      "package_dependencies_react",
+      "package_dependencies_react_dom",
+      "package_dependencies_recharts",
+      "package_dependencies_supabase_supabase_js",
+      "package_dependencies_xlsx",
+      "react",
+      "react_dom",
+      "recharts",
+      "supabase_supabase_js",
+      "xlsx"
+    ],
+    "3": [
+      "eslint",
+      "eslint_config_next",
+      "package_devdependencies",
+      "package_devdependencies_eslint",
+      "package_devdependencies_eslint_config_next",
+      "package_devdependencies_tailwindcss",
+      "package_devdependencies_tailwindcss_postcss",
+      "package_devdependencies_types_node",
+      "package_devdependencies_types_react",
+      "package_devdependencies_types_react_dom",
+      "package_devdependencies_typescript",
+      "tailwindcss",
+      "tailwindcss_postcss",
+      "types_node",
+      "types_react",
+      "types_react_dom",
+      "typescript"
+    ],
+    "4": [
+      "app_components_receipts",
+      "app_components_receipts_basereceipt",
+      "app_components_receipts_deliveryreceipt",
+      "app_components_receipts_fuelreceipt",
+      "app_components_receipts_fund",
+      "app_components_receipts_maintenancereceipt",
+      "app_components_receipts_numbertoarabicwords",
+      "app_components_receipts_receipts",
+      "app_components_receipts_receipttype",
+      "app_components_receipts_receipttypes",
+      "app_components_receipts_supabase"
+    ],
+    "5": [
+      "ref_app_components_finance",
+      "ref_mts",
+      "ref_next_dev_types_ts",
+      "ref_next_env_d_ts",
+      "ref_next_types_ts",
+      "ref_node_modules",
+      "ref_ts",
+      "ref_tsx",
+      "tsconfig",
+      "tsconfig_exclude",
+      "tsconfig_include"
+    ],
+    "6": [
+      "app_components_visa",
+      "app_components_visa_annualvisa",
+      "app_components_visa_categories",
+      "app_components_visa_nationalities",
+      "app_components_visa_supabase",
+      "app_components_visa_touristvisa",
+      "app_components_visa_visa",
+      "app_components_visa_visacycle",
+      "app_components_visa_visafile",
+      "app_components_visa_visastat"
+    ],
+    "7": [
+      "app_components_attendance",
+      "app_components_attendance_attendance",
+      "app_components_attendance_attendancerecord",
+      "app_components_attendance_dailydetail",
+      "app_components_attendance_employee",
+      "app_components_attendance_formatdate",
+      "app_components_attendance_monthlabel",
+      "app_components_attendance_monthlyrow",
+      "app_components_attendance_supabase"
+    ],
+    "8": [
+      "package",
+      "package_name",
+      "package_private",
+      "package_scripts",
+      "package_scripts_build",
+      "package_scripts_dev",
+      "package_scripts_lint",
+      "package_scripts_start",
+      "package_version"
+    ],
+    "9": [
+      "app_components_finance",
+      "app_components_finance_expense",
+      "app_components_finance_expenseform",
+      "app_components_finance_finance",
+      "app_components_finance_fund",
+      "app_components_finance_fundform",
+      "app_components_finance_supabase",
+      "app_components_finance_unifieditem"
+    ],
+    "10": [
+      "app_components_tasks",
+      "app_components_tasks_assignableuser",
+      "app_components_tasks_priorityinfo",
+      "app_components_tasks_rolelabel",
+      "app_components_tasks_statusinfo",
+      "app_components_tasks_supabase",
+      "app_components_tasks_task",
+      "app_components_tasks_tasks"
+    ],
+    "11": [
+      "app_components_activitylog",
+      "app_components_activitylog_actioncolor",
+      "app_components_activitylog_activityentry",
+      "app_components_activitylog_activitylog",
+      "app_components_activitylog_loginentry",
+      "app_components_activitylog_sectionlabel",
+      "app_components_activitylog_supabase"
+    ],
+    "12": [
+      "app_components_payroll",
+      "app_components_payroll_approval",
+      "app_components_payroll_employee",
+      "app_components_payroll_monthlabel",
+      "app_components_payroll_payroll",
+      "app_components_payroll_payrollrecord",
+      "app_components_payroll_supabase"
+    ],
+    "13": [
+      "app_components_reports",
+      "app_components_reports_colors",
+      "app_components_reports_fmt",
+      "app_components_reports_fmtm",
+      "app_components_reports_months_ar",
+      "app_components_reports_reports",
+      "app_components_reports_supabase"
+    ],
+    "14": [
+      "android_app_src_androidtest_java_com_getcapacitor_myapp_exampleinstrumentedtest",
+      "android_app_src_androidtest_java_com_getcapacitor_myapp_exampleinstrumentedtest_exampleinstrumentedtest",
+      "android_app_src_androidtest_java_com_getcapacitor_myapp_exampleinstrumentedtest_exampleinstrumentedtest_useappcontext",
+      "android_app_src_androidtest_java_com_getcapacitor_myapp_exampleinstrumentedtest_java_test",
+      "runwith"
+    ],
+    "15": [
+      "app_layout",
+      "app_layout_geistmono",
+      "app_layout_geistsans",
+      "app_layout_metadata",
+      "app_layout_rootlayout"
+    ],
+    "16": [
+      "android_app_src_test_java_com_getcapacitor_myapp_exampleunittest",
+      "android_app_src_test_java_com_getcapacitor_myapp_exampleunittest_exampleunittest",
+      "android_app_src_test_java_com_getcapacitor_myapp_exampleunittest_exampleunittest_addition_iscorrect",
+      "android_app_src_test_java_com_getcapacitor_myapp_exampleunittest_java_test"
+    ],
+    "17": [
+      "android_gradlew",
+      "android_gradlew__entry",
+      "android_gradlew_die",
+      "android_gradlew_warn"
+    ],
+    "18": [
+      "android_app_src_main_java_com_sanya_platform_mainactivity",
+      "android_app_src_main_java_com_sanya_platform_mainactivity_mainactivity",
+      "bridgeactivity"
+    ],
+    "19": [
+      "capacitor_config",
+      "capacitor_config_config"
+    ],
+    "20": [
+      "eslint_config",
+      "eslint_config_eslintconfig"
+    ],
+    "21": [
+      "next_config",
+      "next_config_nextconfig"
+    ],
+    "22": [
+      "postcss_config",
+      "postcss_config_config"
+    ],
+    "23": [
+      "android_app_build"
+    ],
+    "24": [
+      "android_app_capacitor_build"
+    ],
+    "25": [
+      "android_app_src_main_assets_public_cordova"
+    ],
+    "26": [
+      "android_app_src_main_assets_public_cordova_plugins"
+    ],
+    "27": [
+      "android_build"
+    ],
+    "28": [
+      "android_capacitor_cordova_android_plugins_build"
+    ],
+    "29": [
+      "android_capacitor_cordova_android_plugins_cordova_variables"
+    ],
+    "30": [
+      "android_capacitor_settings"
+    ],
+    "31": [
+      "android_settings"
+    ],
+    "32": [
+      "android_variables"
+    ]
+  },
+  "cohesion": {
+    "0": 0.07765151515151515,
+    "1": 0.09523809523809523,
+    "2": 0.10526315789473684,
+    "3": 0.11764705882352941,
+    "4": 0.2545454545454545,
+    "5": 0.18181818181818182,
+    "6": 0.2,
+    "7": 0.2777777777777778,
+    "8": 0.2222222222222222,
+    "9": 0.25,
+    "10": 0.25,
+    "11": 0.3333333333333333,
+    "12": 0.3333333333333333,
+    "13": 0.38095238095238093,
+    "14": 0.6,
+    "15": 0.4,
+    "16": 0.6666666666666666,
+    "17": 0.8333333333333334,
+    "18": 1.0,
+    "19": 1.0,
+    "20": 1.0,
+    "21": 1.0,
+    "22": 1.0,
+    "23": 1.0,
+    "24": 1.0,
+    "25": 1.0,
+    "26": 1.0,
+    "27": 1.0,
+    "28": 1.0,
+    "29": 1.0,
+    "30": 1.0,
+    "31": 1.0,
+    "32": 1.0
+  },
+  "gods": [
+    {
+      "id": "tsconfig_compileroptions",
+      "label": "compilerOptions",
+      "degree": 16
+    },
+    {
+      "id": "app_logactivity_logactivity",
+      "label": "logActivity()",
+      "degree": 11
+    },
+    {
+      "id": "tsconfig_include",
+      "label": "include",
+      "degree": 8
+    },
+    {
+      "id": "package_scripts",
+      "label": "scripts",
+      "degree": 5
+    },
+    {
+      "id": "app_components_receipts_basereceipt",
+      "label": "BaseReceipt",
+      "degree": 4
+    },
+    {
+      "id": "tsconfig_compileroptions_lib",
+      "label": "lib",
+      "degree": 4
+    },
+    {
+      "id": "android_app_src_androidtest_java_com_getcapacitor_myapp_exampleinstrumentedtest_exampleinstrumentedtest",
+      "label": "ExampleInstrumentedTest",
+      "degree": 3
+    },
+    {
+      "id": "app_components_attendance_attendance",
+      "label": "Attendance()",
+      "degree": 3
+    },
+    {
+      "id": "app_components_reports_reports",
+      "label": "Reports()",
+      "degree": 3
+    },
+    {
+      "id": "android_app_src_main_java_com_sanya_platform_mainactivity_mainactivity",
+      "label": "MainActivity",
+      "degree": 2
+    }
+  ],
+  "surprises": [],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `logActivity()` connect `page.tsx` to `Receipts.tsx`, `Visa.tsx`, `Attendance.tsx`, `Finance.tsx`, `Payroll.tsx`?",
+      "why": "High betweenness centrality (0.033) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `dependencies` connect `dependencies` to `package.json`?",
+      "why": "High betweenness centrality (0.027) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `devDependencies` connect `devDependencies` to `package.json`?",
+      "why": "High betweenness centrality (0.024) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `supabase`, `ActivityEntry`, `LoginEntry` to the rest of the system?",
+      "why": "116 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `page.tsx` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.07765151515151515 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `compilerOptions` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.09523809523809523 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `dependencies` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.10526315789473684 - nodes in this community are weakly interconnected."
+    }
+  ]
+}
