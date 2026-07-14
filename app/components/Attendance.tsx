@@ -484,7 +484,6 @@ export default function Attendance({ readOnly = false, userRole = '' }: { readOn
         ${signatureBoxHtml('hr_manager', 'مدير قسم الموارد البشرية')}
         ${signatureBoxHtml('site_manager', 'مدير الموقع')}
       </div>
-      <div class="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — ${new Date().toLocaleDateString('ar-IQ')}</div>
     `
     await generatePdf({
       contentHtml, signatureHtml: signaturesHtml, styleCss: reportStyleCss,
@@ -518,7 +517,6 @@ export default function Attendance({ readOnly = false, userRole = '' }: { readOn
         ${signatureBoxHtml('hr_manager', 'مدير قسم الموارد البشرية')}
         ${signatureBoxHtml('site_manager', 'مدير الموقع')}
       </div>
-      <div class="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — ${new Date().toLocaleDateString('ar-IQ')}</div>
     `
     await generatePdf({
       contentHtml, signatureHtml: signaturesHtml, styleCss: reportStyleCss,

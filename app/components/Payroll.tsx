@@ -426,7 +426,6 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
           <div class="signature-person">${esc(approvals['hr_manager']?.person_name)}</div>
         </div>
       </div>
-      <div class="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — ${new Date().toLocaleDateString('ar-IQ')}</div>
     `
     await generatePdf({
       contentHtml, signatureHtml: signaturesHtml, styleCss,

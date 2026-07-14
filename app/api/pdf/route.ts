@@ -1,8 +1,36 @@
 import { NextRequest } from 'next/server'
 import { imageSize } from 'image-size'
+import { PDFDocument } from 'pdf-lib'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
+
+// خط Cairo يُجلب من Google Fonts عادةً عبر رابط شبكة — هذا يسبب اختلاف توقيت
+// تحميل بسيط بين طلب وآخر، وقد يجعل النص يُقاس بخط بديل مؤقت قبل اكتمال Cairo رغم
+// انتظار document.fonts.ready، مما يُنتج عدد صفحات مختلف لنفس المحتوى بين مرتين.
+// نجلب ملفات الخط مرة واحدة ونضمّنها مباشرة بالـHTML (بدون أي طلب شبكة عند التوليد)
+// لضمان نتيجة متطابقة دائماً، ونخزّنها مؤقتاً بذاكرة العملية لإعادة الاستخدام
+let cachedFontCss: string | null = null
+async function getInlineFontCss(): Promise<string> {
+  if (cachedFontCss) return cachedFontCss
+  try {
+    const cssRes = await fetch('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
+    })
+    let css = await cssRes.text()
+    const urls = [...css.matchAll(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/g)].map(m => m[1])
+    for (const url of [...new Set(urls)]) {
+      const fontRes = await fetch(url)
+      const buffer = Buffer.from(await fontRes.arrayBuffer())
+      const dataUri = `data:font/woff2;base64,${buffer.toString('base64')}`
+      css = css.split(url).join(dataUri)
+    }
+    cachedFontCss = css
+    return css
+  } catch {
+    return ''
+  }
+}
 
 interface PdfRequestBody {
   contentHtml: string
@@ -69,6 +97,29 @@ async function getBrowser() {
   })
 }
 
+function buildDoc(bodyInner: string, styleCss: string, fontCss: string): string {
+  return `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        ${fontCss}
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Cairo', Arial, sans-serif; direction: rtl; color: #111; }
+        ${styleCss}
+      </style>
+    </head>
+    <body>${bodyInner}</body>
+    </html>
+  `
+}
+
+async function countPages(buffer: Uint8Array): Promise<number> {
+  const doc = await PDFDocument.load(buffer)
+  return doc.getPageCount()
+}
+
 export async function POST(req: NextRequest) {
   const body: PdfRequestBody = await req.json()
   const { contentHtml, signatureHtml, styleCss, landscape } = body
@@ -91,80 +142,104 @@ export async function POST(req: NextRequest) {
   const availableHeightPx = availableHeightMM * PX_PER_MM
   const contentWidthPx = (pageWidthMM - 2 * SIDE_MARGIN_MM) * PX_PER_MM
 
-  const html = `
-    <!DOCTYPE html>
-    <html dir="rtl" lang="ar">
-    <head>
-      <meta charset="UTF-8">
-      <link rel="preconnect" href="https://fonts.googleapis.com">
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
-      <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Cairo', Arial, sans-serif; direction: rtl; color: #111; }
-        ${styleCss}
-      </style>
-    </head>
-    <body>
+  const pdfOptions = {
+    format: 'A4' as const,
+    landscape: !!landscape,
+    printBackground: true,
+    displayHeaderFooter: !!(headerHtml || footerHtml),
+    headerTemplate: headerHtml || '<span></span>',
+    footerTemplate: footerHtml || '<span></span>',
+    margin: {
+      top: `${marginTopMM}mm`,
+      bottom: `${marginBottomMM}mm`,
+      left: `${SIDE_MARGIN_MM}mm`,
+      right: `${SIDE_MARGIN_MM}mm`
+    }
+  }
+
+  const fontCss = await getInlineFontCss()
+  const browser = await getBrowser()
+  try {
+    async function renderPdf(htmlDoc: string): Promise<Uint8Array> {
+      const page = await browser.newPage()
+      try {
+        await page.setViewport({ width: Math.ceil(contentWidthPx), height: 2000 })
+        await page.setContent(htmlDoc, { waitUntil: 'load' })
+        await page.evaluate(() => document.fonts.ready)
+        return new Uint8Array(await page.pdf(pdfOptions))
+      } finally {
+        await page.close()
+      }
+    }
+
+    // الجدول لوحده أولاً، لمعرفة عدد الصفحات الحقيقي الذي يحتاجه فعلياً (بدل تقدير حسابي
+    // قد يختلف عن تقسيم الصفحات الحقيقي بمحرك الطباعة، خصوصاً مع تكرار رأس الجدول بكل صفحة)
+    const tableOnlyPages = await countPages(await renderPdf(
+      buildDoc(`<div id="pdf-content">${contentHtml}</div>`, styleCss, fontCss)
+    ))
+
+    if (tableOnlyPages <= 1) {
+      // صفحة واحدة: نقيس المساحة المتبقية بدقة وندفع التوقيع لأسفلها مباشرة
+      const page = await browser.newPage()
+      try {
+        await page.setViewport({ width: Math.ceil(contentWidthPx), height: 2000 })
+        await page.setContent(buildDoc(`
+          <div id="pdf-content">${contentHtml}</div>
+          <div id="pdf-sig-wrap" style="display:flex;flex-direction:column;">
+            <div style="flex:1"></div>
+            <div id="pdf-sig-block">${signatureHtml}</div>
+          </div>
+        `, styleCss, fontCss), { waitUntil: 'load' })
+        await page.evaluate(() => document.fonts.ready)
+        await page.evaluate((availableHeightPx: number) => {
+          const contentEl = document.getElementById('pdf-content')
+          const sigWrap = document.getElementById('pdf-sig-wrap')
+          const sigBlock = document.getElementById('pdf-sig-block')
+          if (!contentEl || !sigWrap || !sigBlock) return
+          const remaining = availableHeightPx - contentEl.getBoundingClientRect().height
+          const sigHeight = sigBlock.getBoundingClientRect().height
+          if (remaining >= sigHeight + 10) {
+            sigWrap.style.minHeight = remaining + 'px'
+          } else {
+            sigWrap.style.pageBreakBefore = 'always'
+            sigWrap.style.minHeight = availableHeightPx + 'px'
+          }
+        }, availableHeightPx)
+        const pdfBuffer = await page.pdf(pdfOptions)
+        return new Response(new Uint8Array(pdfBuffer), {
+          headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="report.pdf"' }
+        })
+      } finally {
+        await page.close()
+      }
+    }
+
+    // متعدد الصفحات: نجرّب التدفق الطبيعي أولاً (بدون أي دفع أو تثبيت قسري) ونقارن
+    // عدد صفحاته الفعلي بعدد صفحات الجدول لوحده — هذه المقارنة حقيقة مقاسة من محرك
+    // الطباعة نفسه، وليست تقديراً، فتكتشف بدقة هل التوقيع اتسع بآخر صفحة أم لا
+    const naturalBuffer = await renderPdf(buildDoc(`
       <div id="pdf-content">${contentHtml}</div>
-      <div id="pdf-sig-wrap" style="display:flex;flex-direction:column;">
+      <div id="pdf-sig-block">${signatureHtml}</div>
+    `, styleCss, fontCss))
+    const naturalPages = await countPages(naturalBuffer)
+
+    if (naturalPages <= tableOnlyPages) {
+      // التوقيع اتسع طبيعياً بنفس عدد صفحات الجدول — لا داعي لأي تدخل إضافي
+      return new Response(new Uint8Array(naturalBuffer), {
+        headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="report.pdf"' }
+      })
+    }
+
+    // التوقيع فعلاً يحتاج صفحة إضافية: ندفعه لصفحة جديدة كاملة ونثبته بأسفلها
+    const forcedBuffer = await renderPdf(buildDoc(`
+      <div id="pdf-content">${contentHtml}</div>
+      <div id="pdf-sig-wrap" style="display:flex;flex-direction:column;page-break-before:always;min-height:${availableHeightPx}px;">
         <div style="flex:1"></div>
         <div id="pdf-sig-block">${signatureHtml}</div>
       </div>
-    </body>
-    </html>
-  `
-
-  const browser = await getBrowser()
-  try {
-    const page = await browser.newPage()
-    // نضبط عرض العرض (viewport) على نفس عرض منطقة الطباعة حتى يطابق قياس الارتفاع الفعلي
-    // ما سيحصل عند توليد الـPDF لاحقاً
-    await page.setViewport({ width: Math.ceil(contentWidthPx), height: 2000 })
-    await page.setContent(html, { waitUntil: 'load' })
-    await page.evaluate(() => document.fonts.ready)
-
-    // نقيس ارتفاع المحتوى الفعلي، ونقرر: هل تلتصق التوقيعات بأسفل الصفحة التي
-    // ينتهي فيها المحتوى (سواء كانت الصفحة الوحيدة أو آخر صفحة من جدول متعدد
-    // الصفحات)، أم يجب دفعها لصفحة جديدة لأن آخر صفحة يشغلها المحتوى ما فيها
-    // مساحة كافية. نحسب "الباقي على آخر صفحة" بباقي القسمة بدل افتراض صفحة واحدة فقط،
-    // حتى لا تُدفع التوقيعات لصفحة إضافية فارغة رغم وجود مساحة كافية بآخر صفحة فعلية
-    await page.evaluate((availableHeightPx: number) => {
-      const contentEl = document.getElementById('pdf-content')
-      const sigWrap = document.getElementById('pdf-sig-wrap')
-      const sigBlock = document.getElementById('pdf-sig-block')
-      if (!contentEl || !sigWrap || !sigBlock) return
-      const contentHeight = contentEl.getBoundingClientRect().height
-      const sigHeight = sigBlock.getBoundingClientRect().height
-      const usedOnLastPage = contentHeight % availableHeightPx
-      const remaining = availableHeightPx - (usedOnLastPage === 0 ? 0 : usedOnLastPage)
-      if (remaining >= sigHeight + 10) {
-        sigWrap.style.minHeight = remaining + 'px'
-      } else {
-        sigWrap.style.pageBreakBefore = 'always'
-        sigWrap.style.minHeight = availableHeightPx + 'px'
-      }
-    }, availableHeightPx)
-
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      landscape: !!landscape,
-      printBackground: true,
-      displayHeaderFooter: !!(headerHtml || footerHtml),
-      headerTemplate: headerHtml || '<span></span>',
-      footerTemplate: footerHtml || '<span></span>',
-      margin: {
-        top: `${marginTopMM}mm`,
-        bottom: `${marginBottomMM}mm`,
-        left: `${SIDE_MARGIN_MM}mm`,
-        right: `${SIDE_MARGIN_MM}mm`
-      }
-    })
-    return new Response(new Uint8Array(pdfBuffer), {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': 'inline; filename="report.pdf"'
-      }
+    `, styleCss, fontCss))
+    return new Response(new Uint8Array(forcedBuffer), {
+      headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="report.pdf"' }
     })
   } finally {
     await browser.close()
