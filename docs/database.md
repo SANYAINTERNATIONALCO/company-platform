@@ -5,10 +5,13 @@
 ## الجداول الرئيسية
 
 ### employees
-الموظفون. أعمدة مهمة: `name, job_title, hire_date, status('active'), shift_type('يومي'/'روتيشن'), base_salary, sort_order, passport_number` + حقول السلفة: `advance_total, advance_monthly_deduction, advance_remaining, advance_total_installments, advance_completed_installments`
+الموظفون. أعمدة مهمة: `name, job_title, hire_date, status('active'), shift_type('يومي'/'روتيشن'), base_salary, sort_order, passport_number` + حقول السلفة: `advance_total, advance_monthly_deduction, advance_remaining, advance_total_installments, advance_completed_installments` + `overtime_leave_balance` (رصيد الإجازة التعويضية التراكمي، يُحدَّث من Overtime.tsx وAttendance.tsx)
 
 ### attendance_records
 `employee_id, record_date, status, check_in, check_out` — الحالات نصوص عربية (انظر CLAUDE.md)
+
+### overtime_records
+سجل أيام الأوفرتايم. `employee_id, overtime_date, notes, created_at` — كل صف = يوم أوفرتايم واحد = +1 لعمود `employees.overtime_leave_balance` (يُدار من `app/components/Overtime.tsx`؛ الحذف يُرجع الرصيد −1)
 
 ### payroll_records
 أرشيف الرواتب الشهري. `UNIQUE(employee_id, payroll_month)` — payroll_month بصيغة YYYY-MM. أعمدة: `base_salary, absent_days, absent_deduction, advance_deduction, extra_amount, net_salary, notes`
@@ -48,7 +51,7 @@
 `user_id → auth.users, role` بقيد: editor/admin/accountant/guest_1/guest_2
 
 ## Views
-- `monthly_attendance_summary` — أعمدة عربية حرفية: الاسم، الشهر، أيام الدوام، روتيشن، ايام الجمعه، عدد ايام الغياب، إجازة مرضية، إجازة طارئة، إجازة اعتيادية، إجازة وفاة، عطلة رسمية، مجموع الايام. (إعادة إنشائه تتطلب DROP ثم CREATE بنفس الأسماء)
+- `monthly_attendance_summary` — أعمدة عربية حرفية: الاسم، الشهر، أيام الدوام، روتيشن، ايام الجمعه، عدد ايام الغياب، إجازة مرضية، إجازة طارئة، إجازة اعتيادية، إجازة تعويضية، إجازة وفاة، عطلة رسمية، مجموع الايام. (إعادة إنشائه تتطلب DROP ثم CREATE بنفس الأسماء)
 - `funds_summary` — أعمدة عربية: المصدر، تاريخ الاستلام، المبلغ المستلم، إجمالي المصروف، المتبقي، ملاحظات
 
 ## Storage Buckets

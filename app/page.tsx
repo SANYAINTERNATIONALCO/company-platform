@@ -12,6 +12,7 @@ import ActivityLog from './components/ActivityLog'
 import Documents from './components/Documents'
 import Custody from './components/Custody'
 import Contracts from './components/Contracts'
+import Overtime from './components/Overtime'
 import Reports from './components/Reports'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { logActivity } from './logActivity'
@@ -168,6 +169,7 @@ export default function Home() {
         { id: 'documents', label: 'الكتب الرسمية', icon: 'DOC', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'custody', label: 'العهد المالية', icon: 'CUST', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'contracts', label: 'العقود', icon: 'CONT', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'overtime', label: 'الأوفرتايم', icon: 'OT', show: ['editor','admin','guest_1','guest_2'] },
       ]
     },
     {
@@ -200,6 +202,7 @@ export default function Home() {
     documents: 'الكتب الرسمية',
     custody: 'العهد المالية',
     contracts: 'العقود',
+    overtime: 'الأوفرتايم',
     reports: 'التقارير السنوية',
     finance: 'الحسابات',
     visa: 'التأشيرات',
@@ -292,6 +295,13 @@ export default function Home() {
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <rect x="3" y="3" width="18" height="18" rx="2" stroke={color} strokeWidth="1.8"/>
           <path d="M7 16v-4M10 16v-6M13 16v-3M16 16v-7" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+        </svg>
+      ),
+      OT: (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <circle cx="11" cy="12.5" r="8" stroke={color} strokeWidth="1.8"/>
+          <path d="M11 8v4.5l3 2" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M17 3.5v4h-4" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       ),
     }
@@ -574,6 +584,7 @@ export default function Home() {
           {activeSection === 'documents' && <Documents readOnly={isReadOnly} />}
           {activeSection === 'custody' && <Custody readOnly={isReadOnly} />}
           {activeSection === 'contracts' && <Contracts readOnly={isReadOnly} />}
+          {activeSection === 'overtime' && <Overtime readOnly={isReadOnly} />}
           {activeSection === 'reports' && <Reports />}
           {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
           {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
