@@ -11,7 +11,10 @@
 `employee_id, record_date, status, check_in, check_out` — الحالات نصوص عربية (انظر CLAUDE.md)
 
 ### overtime_records
-سجل أيام الأوفرتايم. `employee_id, overtime_date, notes, created_at` — كل صف = يوم أوفرتايم واحد = +1 لعمود `employees.overtime_leave_balance` (يُدار من `app/components/Overtime.tsx`؛ الحذف يُرجع الرصيد −1)
+سجل دفعات الأوفرتايم. `employee_id, days_count, start_date, end_date, notes, created_at` — `start_date`/`end_date` اختياريان تماماً (فترة متصلة، تاريخ مرجعي واحد، أو بلا تاريخ لأيام متفرقة). كل صف يضيف `days_count` لعمود `employees.overtime_leave_balance` (يُدار من `app/components/Overtime.tsx`؛ الحذف يُرجع نفس العدد)
+
+### attendance_approvals
+توقيعات اعتماد الموقف الشهري (نفس نمط `payroll_approvals` لكن جدول مستقل). `UNIQUE(attendance_month, role_name)` — role_name: site_manager / hr_manager. أعمدة: `signature_url, signature_scale, person_name`. تُدار من `app/components/Attendance.tsx`، تظهر فقط عند اختيار شهر واحد بالضبط بواجهة الموقف الشهري
 
 ### payroll_records
 أرشيف الرواتب الشهري. `UNIQUE(employee_id, payroll_month)` — payroll_month بصيغة YYYY-MM. أعمدة: `base_salary, absent_days, absent_deduction, advance_deduction, extra_amount, net_salary, notes`
@@ -51,7 +54,7 @@
 `user_id → auth.users, role` بقيد: editor/admin/accountant/guest_1/guest_2
 
 ## Views
-- `monthly_attendance_summary` — أعمدة عربية حرفية: الاسم، الشهر، أيام الدوام، روتيشن، ايام الجمعه، عدد ايام الغياب، إجازة مرضية، إجازة طارئة، إجازة اعتيادية، إجازة تعويضية، إجازة وفاة، عطلة رسمية، مجموع الايام. (إعادة إنشائه تتطلب DROP ثم CREATE بنفس الأسماء)
+- `monthly_attendance_summary` — أعمدة عربية حرفية: الاسم، الشهر، أيام الدوام، روتيشن، ايام الجمعه، عدد ايام الغياب، إجازة مرضية، إجازة طارئة، إجازة اعتيادية، إجازة تعويضية، عطلة رسمية، مجموع الايام (لا يوجد عمود منفصل لإجازة الوفاة — تُحتسب فقط ضمن "مجموع الايام"). (إعادة إنشائه تتطلب DROP ثم CREATE بنفس الأسماء). أعمدة الموقف الشهري بالواجهة قابلة للإخفاء/الإظهار (زر "الأعمدة" بـAttendance.tsx) وتنعكس تلقائياً على الطباعة والتصدير
 - `funds_summary` — أعمدة عربية: المصدر، تاريخ الاستلام، المبلغ المستلم، إجمالي المصروف، المتبقي، ملاحظات
 
 ## Storage Buckets

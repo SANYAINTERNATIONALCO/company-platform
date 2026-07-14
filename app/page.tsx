@@ -588,7 +588,7 @@ export default function Home() {
           {activeSection === 'reports' && <Reports />}
           {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
           {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
-          {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} />}
+          {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} userRole={userRole || ''} />}
           {activeSection === 'visa' && <Visa readOnly={isReadOnly} />}
           {activeSection === 'payroll' && <Payroll readOnly={isReadOnly} userRole={userRole || ''} />}
 

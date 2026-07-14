@@ -18,7 +18,9 @@ interface Employee {
 interface OvertimeRecord {
   id: string
   employee_id: string
-  overtime_date: string
+  days_count: number
+  start_date: string | null
+  end_date: string | null
   notes: string | null
   created_at: string
 }
@@ -31,7 +33,7 @@ export default function Overtime({ readOnly = false }: { readOnly?: boolean }) {
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [form, setForm] = useState({
-    employee_id: '', overtime_date: new Date().toISOString().split('T')[0], notes: ''
+    employee_id: '', days_count: 1, start_date: '', end_date: '', notes: ''
   })
 
   useEffect(() => {
@@ -46,7 +48,7 @@ export default function Overtime({ readOnly = false }: { readOnly?: boolean }) {
 
   async function loadRecords() {
     setLoading(true)
-    const { data } = await supabase.from('overtime_records').select('*').order('overtime_date', { ascending: false })
+    const { data } = await supabase.from('overtime_records').select('*').order('created_at', { ascending: false })
     setRecords((data as OvertimeRecord[]) || [])
     setLoading(false)
   }
@@ -63,33 +65,44 @@ export default function Overtime({ readOnly = false }: { readOnly?: boolean }) {
     return new Date(d).toLocaleDateString('ar-IQ')
   }
 
+  function fmtPeriod(r: OvertimeRecord) {
+    if (r.start_date && r.end_date && r.end_date !== r.start_date) return `${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}`
+    if (r.start_date) return fmtDate(r.start_date)
+    return '—'
+  }
+
   async function addRecord() {
-    if (!form.employee_id || !form.overtime_date) { alert('يرجى اختيار الموظف والتاريخ'); return }
+    if (!form.employee_id) { alert('يرجى اختيار الموظف'); return }
+    if (!form.days_count || form.days_count < 1) { alert('يرجى إدخال عدد أيام صحيح (1 أو أكثر)'); return }
+    if (form.end_date && !form.start_date) { alert('لا يمكن تحديد تاريخ نهاية بدون تاريخ بداية'); return }
+    if (form.start_date && form.end_date && form.end_date < form.start_date) { alert('تاريخ النهاية لا يمكن أن يكون قبل تاريخ البداية'); return }
     setSaving(true)
     const emp = employees.find(e => e.id === form.employee_id)
     const { error } = await supabase.from('overtime_records').insert([{
       employee_id: form.employee_id,
-      overtime_date: form.overtime_date,
+      days_count: form.days_count,
+      start_date: form.start_date || null,
+      end_date: form.end_date || null,
       notes: form.notes || null
     }])
     if (error) { alert('خطأ: ' + error.message); setSaving(false); return }
     await supabase.from('employees').update({
-      overtime_leave_balance: (emp?.overtime_leave_balance || 0) + 1
+      overtime_leave_balance: (emp?.overtime_leave_balance || 0) + form.days_count
     }).eq('id', form.employee_id)
-    setForm({ employee_id: '', overtime_date: new Date().toISOString().split('T')[0], notes: '' })
+    setForm({ employee_id: '', days_count: 1, start_date: '', end_date: '', notes: '' })
     setShowForm(false)
     await Promise.all([loadEmployees(), loadRecords()])
     setSaving(false)
   }
 
   async function deleteRecord(r: OvertimeRecord) {
-    if (!confirm(`هل أنت متأكد من حذف يوم الأوفرتايم هذا لـ${empName(r.employee_id)}؟ سيُخصم يوم من رصيده.`)) return
+    if (!confirm(`هل أنت متأكد من حذف هذا السجل (${r.days_count} يوم) لـ${empName(r.employee_id)}؟ سيُخصم ${r.days_count} يوم من رصيده.`)) return
     const emp = employees.find(e => e.id === r.employee_id)
     await supabase.from('overtime_records').delete().eq('id', r.id)
     await supabase.from('employees').update({
-      overtime_leave_balance: (emp?.overtime_leave_balance || 0) - 1
+      overtime_leave_balance: (emp?.overtime_leave_balance || 0) - r.days_count
     }).eq('id', r.employee_id)
-    await logActivity('حذف يوم أوفرتايم', 'overtime', `حذف يوم أوفرتايم ${empName(r.employee_id)} بتاريخ ${fmtDate(r.overtime_date)}`)
+    await logActivity('حذف يوم أوفرتايم', 'overtime', `حذف ${r.days_count} يوم أوفرتايم لـ${empName(r.employee_id)} (${fmtPeriod(r)})`)
     await Promise.all([loadEmployees(), loadRecords()])
   }
 
@@ -173,17 +186,26 @@ export default function Overtime({ readOnly = false }: { readOnly?: boolean }) {
                 </select>
               </div>
               <div>
-                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ يوم الأوفرتايم *</label>
-                <input type="date" value={form.overtime_date} onChange={e=>setForm({...form,overtime_date:e.target.value})} style={inputStyle}/>
+                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>عدد الأيام *</label>
+                <input type="number" min={1} step={1} value={form.days_count}
+                  onChange={e=>setForm({...form,days_count:parseInt(e.target.value)||1})} style={inputStyle}/>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>من تاريخ (اختياري)</label>
+                <input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})} style={inputStyle}/>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>إلى تاريخ (اختياري)</label>
+                <input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})} style={inputStyle}/>
               </div>
               <div style={{gridColumn:'span 2'}}>
                 <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>ملاحظات (اختياري)</label>
-                <input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="سبب الأوفرتايم..." style={inputStyle}/>
+                <input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="سبب الأوفرتايم، أو وصف الأيام إذا كانت متفرقة..." style={inputStyle}/>
               </div>
             </div>
             <button onClick={addRecord} disabled={saving}
               style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
-              {saving ? 'جارٍ الحفظ...' : 'حفظ (يُضاف يوم لرصيد التعويضية)'}
+              {saving ? 'جارٍ الحفظ...' : `حفظ (يُضاف ${form.days_count || 0} يوم لرصيد التعويضية)`}
             </button>
           </div>
         )}
@@ -197,7 +219,7 @@ export default function Overtime({ readOnly = false }: { readOnly?: boolean }) {
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
               <thead>
                 <tr style={{background:'#f3f4f6'}}>
-                  {['الموظف','المنصب','تاريخ الأوفرتايم','ملاحظات',''].map((h,i)=>(
+                  {['الموظف','المنصب','عدد الأيام','الفترة','ملاحظات',''].map((h,i)=>(
                     <th key={i} style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
                   ))}
                 </tr>
@@ -207,7 +229,8 @@ export default function Overtime({ readOnly = false }: { readOnly?: boolean }) {
                   <tr key={r.id} style={{borderBottom:'1px solid #e5e7eb'}}>
                     <td style={{padding:'10px 14px',fontWeight:600,color:'#111827'}}>{empName(r.employee_id)}</td>
                     <td style={{padding:'10px 14px',color:'#6b7280',fontSize:12}}>{empTitle(r.employee_id)}</td>
-                    <td style={{padding:'10px 14px',color:'#6b7280'}}>{fmtDate(r.overtime_date)}</td>
+                    <td style={{padding:'10px 14px',color:'#111827',fontWeight:600,textAlign:'center'}}>{r.days_count}</td>
+                    <td style={{padding:'10px 14px',color:'#6b7280'}}>{fmtPeriod(r)}</td>
                     <td style={{padding:'10px 14px',color:'#6b7280',fontSize:12,maxWidth:200}}>{r.notes || '—'}</td>
                     <td style={{padding:'10px 14px'}}>
                       {!readOnly && (

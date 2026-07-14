@@ -36,7 +36,6 @@ interface MonthlyRow {
   'إجازة طارئة': number
   'إجازة اعتيادية': number
   'إجازة تعويضية': number
-  'إجازة وفاة': number
   'عطلة رسمية': number
   'مجموع الايام': number
 }
@@ -63,7 +62,13 @@ const monthLabel = (m: string): string => {
   return names[parseInt(month) - 1] + ' ' + year
 }
 
-export default function Attendance({ readOnly = false }: { readOnly?: boolean }) {
+interface Approval {
+  person_name: string
+  signature_url: string | null
+  signature_scale: number
+}
+
+export default function Attendance({ readOnly = false, userRole = '' }: { readOnly?: boolean; userRole?: string }) {
   const [viewMode, setViewMode] = useState('daily')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [records, setRecords] = useState<Record<string, AttendanceRecord>>({})
@@ -89,8 +94,21 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
   // قوائم منسدلة
   const [monthDropdownOpen, setMonthDropdownOpen] = useState(false)
   const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false)
+  const [columnsDropdownOpen, setColumnsDropdownOpen] = useState(false)
   const monthDropdownRef = useRef<HTMLDivElement>(null)
   const employeeDropdownRef = useRef<HTMLDivElement>(null)
+  const columnsDropdownRef = useRef<HTMLDivElement>(null)
+
+  // ترويسة الطباعة (نفس صورة قسم الكتب الرسمية)
+  const [letterheadTop, setLetterheadTop] = useState<string | null>(null)
+  const [letterheadBottom, setLetterheadBottom] = useState<string | null>(null)
+
+  // توقيعات اعتماد الموقف الشهري
+  const [approvals, setApprovals] = useState<Record<string, Approval>>({})
+  const [uploadingSig, setUploadingSig] = useState<string | null>(null)
+
+  // إظهار/إخفاء أعمدة الموقف الشهري
+  const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -100,12 +118,21 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
       if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(e.target as Node)) {
         setEmployeeDropdownOpen(false)
       }
+      if (columnsDropdownRef.current && !columnsDropdownRef.current.contains(e.target as Node)) {
+        setColumnsDropdownOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   useEffect(() => { loadEmployees() }, [])
+  useEffect(() => { loadLetterheads() }, [])
+
+  useEffect(() => {
+    if (selectedMonths.length === 1) loadApprovals(selectedMonths[0])
+    else setApprovals({})
+  }, [selectedMonths])
 
   useEffect(() => {
     if (employees.length > 0 && viewMode === 'daily' && selectedDate) {
@@ -127,6 +154,63 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
     setEmployees((data as Employee[]) || [])
     const t = new Date().toISOString().split('T')[0]
     setSelectedDate(t)
+  }
+
+  async function loadLetterheads() {
+    const { data } = await supabase.from('document_assets').select('*')
+    ;(data || []).forEach((a: any) => {
+      if (a.asset_key === 'letterhead_top') setLetterheadTop(a.asset_url)
+      if (a.asset_key === 'letterhead_bottom') setLetterheadBottom(a.asset_url)
+    })
+  }
+
+  async function loadApprovals(month: string) {
+    const { data } = await supabase.from('attendance_approvals').select('*').eq('attendance_month', month)
+    const map: Record<string, Approval> = {}
+    ;(data || []).forEach((a: any) => { map[a.role_name] = { person_name: a.person_name || '', signature_url: a.signature_url, signature_scale: a.signature_scale || 1 } })
+    if (!map['site_manager']) map['site_manager'] = { person_name: 'جعفر محمد سعيد', signature_url: null, signature_scale: 1 }
+    if (!map['hr_manager']) map['hr_manager'] = { person_name: 'حسن عادل شعلان', signature_url: null, signature_scale: 1 }
+    setApprovals(map)
+  }
+
+  function updateApprovalField(role: string, field: keyof Approval, value: string | number) {
+    setApprovals(prev => ({ ...prev, [role]: { ...prev[role], [field]: value } }))
+  }
+
+  async function persistApproval(role: string) {
+    if (selectedMonths.length !== 1) return
+    const approval = approvals[role]
+    await supabase.from('attendance_approvals').upsert({
+      attendance_month: selectedMonths[0],
+      role_name: role,
+      person_name: approval?.person_name || '',
+      signature_url: approval?.signature_url || null,
+      signature_scale: approval?.signature_scale || 1
+    }, { onConflict: 'attendance_month,role_name' })
+  }
+
+  async function handleSignatureUpload(role: string, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || selectedMonths.length !== 1) return
+    setUploadingSig(role)
+    const fileExt = file.name.split('.').pop()
+    const fileName = `attendance_${role}_${selectedMonths[0]}_${Date.now()}.${fileExt}`
+    const { data, error } = await supabase.storage.from('signatures').upload(fileName, file)
+    if (error) { alert('خطأ في الرفع: ' + error.message) }
+    else {
+      const { data: urlData } = supabase.storage.from('signatures').getPublicUrl(data.path)
+      const approval = approvals[role]
+      await supabase.from('attendance_approvals').upsert({
+        attendance_month: selectedMonths[0],
+        role_name: role,
+        person_name: approval?.person_name || '',
+        signature_url: urlData.publicUrl,
+        signature_scale: approval?.signature_scale || 1
+      }, { onConflict: 'attendance_month,role_name' })
+      await loadApprovals(selectedMonths[0])
+    }
+    setUploadingSig(null)
+    e.target.value = ''
   }
 
   // جلب آخر حالة روتيشن معروفة لموظف قبل تاريخ معين
@@ -360,9 +444,11 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
         <meta charset="UTF-8">
         <title>الموقف الشهري</title>
         <style>
-          @page { margin: 12mm; size: A4; }
+          @page { margin: 10mm; size: A4 landscape; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: Arial, sans-serif; direction: rtl; color: #111; padding: 0; }
+          .lh-img { width: 100%; object-fit: contain; margin-bottom: 20px; }
+          .lh-img-bottom { width: 100%; object-fit: contain; margin-top: 20px; }
           .header { text-align: center; border-bottom: 3px solid #1e40af; padding-bottom: 16px; margin-bottom: 24px; }
           .company-name { font-size: 22px; font-weight: bold; color: #1e40af; margin-bottom: 4px; }
           .report-title { font-size: 16px; color: #374151; margin-bottom: 4px; }
@@ -379,7 +465,9 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
           .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ca3af; }
           .signatures { display: flex; justify-content: space-between; margin-top: 60px; padding: 0 20px; }
           .signature-box { text-align: center; min-width: 200px; }
-          .signature-line { border-top: 1px solid #111; margin-top: 50px; padding-top: 8px; font-size: 13px; font-weight: 600; color: #111827; }
+          .signature-img-wrap { height: 60px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px; }
+          .signature-line { border-top: 1px solid #111; margin-top: 8px; padding-top: 8px; font-size: 13px; font-weight: 600; color: #111827; }
+          .signature-person { font-size: 12px; color: #6b7280; margin-top: 2px; }
         </style>
       </head>
       <body>${printContent.innerHTML}</body>
@@ -430,26 +518,13 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
   }
 
   function handleExportExcel() {
-    const rows = filteredMonthlySummary.map(row => ({
-      'الاسم': row['الاسم'],
-      'الشهر': monthLabel(row['الشهر']),
-      'أيام الدوام': row['أيام الدوام'],
-      'روتيشن': row['روتيشن'],
-      'أيام الجمعة': row['ايام الجمعه'],
-      'الغياب': row['عدد ايام الغياب'],
-      'إجازة مرضية': row['إجازة مرضية'],
-      'إجازة طارئة': row['إجازة طارئة'],
-      'إجازة اعتيادية': row['إجازة اعتيادية'],
-      'إجازة تعويضية': row['إجازة تعويضية'],
-      'إجازة وفاة': row['إجازة وفاة'],
-      'عطلة رسمية': row['عطلة رسمية'],
-      'مجموع الأيام': row['مجموع الايام'],
-    }))
+    const rows = filteredMonthlySummary.map(row => {
+      const obj: Record<string, string | number> = {}
+      displayedColumns.forEach(c => { obj[c.label] = c.format ? c.format(row) : row[c.key] })
+      return obj
+    })
     const worksheet = XLSX.utils.json_to_sheet(rows)
-    worksheet['!cols'] = [
-      { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 12 },
-      { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }
-    ]
+    worksheet['!cols'] = displayedColumns.map(c => ({ wch: c.key === 'الاسم' ? 22 : c.key === 'الشهر' ? 14 : 12 }))
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'الموقف الشهري')
     const monthsPart = selectedMonths.map(monthLabel).join('-')
@@ -486,7 +561,28 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
     return cur.status !== sav.status || cur.check_in !== sav.check_in || cur.check_out !== sav.check_out || cur.notes !== sav.notes
   }).length
 
-  const monthlyCols = ['الاسم','الشهر','أيام الدوام','روتيشن','ايام الجمعه','عدد ايام الغياب','إجازة مرضية','إجازة طارئة','إجازة اعتيادية','إجازة تعويضية','إجازة وفاة','عطلة رسمية','مجموع الايام']
+  const summaryColumns: { key: keyof MonthlyRow; label: string; locked?: boolean; format?: (r: MonthlyRow) => string; screenStyle?: React.CSSProperties; printClassName?: string }[] = [
+    { key: 'الاسم', label: 'الاسم', locked: true, screenStyle: { fontWeight: 600, color: '#111827' } },
+    { key: 'الشهر', label: 'الشهر', locked: true, format: r => monthLabel(r['الشهر']), screenStyle: { color: '#6b7280' } },
+    { key: 'أيام الدوام', label: 'أيام الدوام', screenStyle: { textAlign: 'center', color: '#15803d', fontWeight: 700 }, printClassName: 'present' },
+    { key: 'روتيشن', label: 'روتيشن', screenStyle: { textAlign: 'center', color: '#0891b2' } },
+    { key: 'ايام الجمعه', label: 'أيام الجمعة', screenStyle: { textAlign: 'center', color: '#1d4ed8' } },
+    { key: 'عدد ايام الغياب', label: 'الغياب', screenStyle: { textAlign: 'center', color: '#dc2626', fontWeight: 700 }, printClassName: 'absent' },
+    { key: 'إجازة مرضية', label: 'إجازة مرضية', screenStyle: { textAlign: 'center' } },
+    { key: 'إجازة طارئة', label: 'إجازة طارئة', screenStyle: { textAlign: 'center' } },
+    { key: 'إجازة اعتيادية', label: 'إجازة اعتيادية', screenStyle: { textAlign: 'center' } },
+    { key: 'إجازة تعويضية', label: 'إجازة تعويضية', screenStyle: { textAlign: 'center' } },
+    { key: 'عطلة رسمية', label: 'عطلة رسمية', screenStyle: { textAlign: 'center' } },
+    { key: 'مجموع الايام', label: 'المجموع', locked: true, screenStyle: { textAlign: 'center', fontWeight: 700, background: '#f9fafb' }, printClassName: 'total-col' },
+  ]
+
+  const displayedColumns = useMemo(() => {
+    return summaryColumns.filter(c => c.locked || visibleCols[c.key] !== false)
+  }, [visibleCols])
+
+  function toggleColumn(key: string) {
+    setVisibleCols(prev => ({ ...prev, [key]: prev[key] === false ? true : false }))
+  }
 
   const filteredMonthlySummary = useMemo(() => {
     if (selectedEmployeeIds.length === 0) return monthlySummaryList
@@ -559,6 +655,23 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             {filteredMonthlySummary.length > 0 && (
               <>
+                <div ref={columnsDropdownRef} style={{position:'relative'}}>
+                  <button onClick={()=>setColumnsDropdownOpen(!columnsDropdownOpen)}
+                    style={{background:'#eff6ff',color:'#1d4ed8',border:'1px solid #bfdbfe',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                    الأعمدة {columnsDropdownOpen ? '▲' : '▼'}
+                  </button>
+                  {columnsDropdownOpen && (
+                    <div style={{position:'absolute',top:'100%',left:0,marginTop:4,background:'#fff',border:'2px solid #d1d5db',borderRadius:8,
+                      boxShadow:'0 8px 24px rgba(0,0,0,0.12)',zIndex:20,minWidth:200,padding:6}}>
+                      {summaryColumns.filter(c=>!c.locked).map(c => (
+                        <label key={c.key} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',cursor:'pointer',fontSize:13,borderRadius:6}}>
+                          <input type="checkbox" checked={visibleCols[c.key] !== false} onChange={()=>toggleColumn(c.key)}/>
+                          <span style={{color:'#374151'}}>{c.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button onClick={handleExportExcel}
                   style={{background:'#dcfce7',color:'#15803d',border:'1px solid #86efac',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
                   تصدير Excel
@@ -796,8 +909,47 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
             </div>
           </div>
 
+          {/* توقيعات اعتماد الموقف الشهري — تتطلب اختيار شهر واحد بالضبط */}
+          {selectedMonths.length === 1 && (
+            <div style={{padding:'16px 20px',borderBottom:'1px solid #e5e7eb',background:'#fff'}}>
+              <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:10}}>توقيعات اعتماد الموقف الشهري — {monthLabel(selectedMonths[0])}</div>
+              <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
+                {['hr_manager','site_manager']
+                  .filter(role => !readOnly || (userRole === 'admin' && role === 'site_manager'))
+                  .map(role => {
+                    const canManageThis = !readOnly || (userRole === 'admin' && role === 'site_manager')
+                    const approval = approvals[role]
+                    return (
+                      <div key={role} style={{minWidth:220}}>
+                        <div style={{fontSize:12,color:'#6b7280',marginBottom:6}}>{role === 'hr_manager' ? 'مدير قسم الموارد البشرية' : 'مدير الموقع'}</div>
+                        {approval?.signature_url && (
+                          <img src={approval.signature_url} alt="" style={{height: 40 * (approval.signature_scale || 1), objectFit:'contain', display:'block', marginBottom:6}}/>
+                        )}
+                        {canManageThis ? (
+                          <>
+                            <input value={approval?.person_name || ''} onChange={e=>updateApprovalField(role,'person_name',e.target.value)} onBlur={()=>persistApproval(role)}
+                              placeholder="اسم الموقّع" style={{padding:'6px 10px',borderRadius:6,border:'1px solid #d1d5db',fontSize:12,color:'#111827',width:'100%',marginBottom:6,boxSizing:'border-box'}}/>
+                            <input type="file" accept="image/*" onChange={e=>handleSignatureUpload(role,e)} disabled={uploadingSig===role}
+                              style={{fontSize:11,marginBottom:6}}/>
+                            {approval?.signature_url && (
+                              <input type="range" min={0.5} max={2} step={0.1} value={approval?.signature_scale || 1}
+                                onChange={e=>updateApprovalField(role,'signature_scale',parseFloat(e.target.value))}
+                                onMouseUp={()=>persistApproval(role)} style={{width:'100%'}}/>
+                            )}
+                          </>
+                        ) : (
+                          <div style={{fontSize:12,color:'#111827',fontWeight:600}}>{approval?.person_name || '—'}</div>
+                        )}
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
+
           {/* محتوى الطباعة */}
           <div ref={printRef} style={{display:'none'}}>
+            {letterheadTop && <img className="lh-img" src={letterheadTop} alt="letterhead"/>}
             <div className="header">
               <div className="company-name">Sanya International Company</div>
               <div className="report-title">الموقف الشهري — {selectedMonths.map(monthLabel).join(' ، ')}</div>
@@ -806,39 +958,37 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
             <table>
               <thead>
                 <tr>
-                  <th>الاسم</th><th>الشهر</th><th>أيام الدوام</th><th>روتيشن</th><th>أيام الجمعة</th>
-                  <th>الغياب</th><th>مرضية</th><th>طارئة</th><th>اعتيادية</th><th>تعويضية</th><th>وفاة</th><th>عطلة رسمية</th><th>المجموع</th>
+                  {displayedColumns.map(c => <th key={c.key}>{c.label}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {filteredMonthlySummary.map((row, idx) => (
                   <tr key={idx}>
-                    <td>{row['الاسم']}</td>
-                    <td>{monthLabel(row['الشهر'])}</td>
-                    <td className="present">{row['أيام الدوام']}</td>
-                    <td>{row['روتيشن']}</td>
-                    <td>{row['ايام الجمعه']}</td>
-                    <td className="absent">{row['عدد ايام الغياب']}</td>
-                    <td>{row['إجازة مرضية']}</td>
-                    <td>{row['إجازة طارئة']}</td>
-                    <td>{row['إجازة اعتيادية']}</td>
-                    <td>{row['إجازة تعويضية']}</td>
-                    <td>{row['إجازة وفاة']}</td>
-                    <td>{row['عطلة رسمية']}</td>
-                    <td className="total-col">{row['مجموع الايام']}</td>
+                    {displayedColumns.map(c => (
+                      <td key={c.key} className={c.printClassName}>{c.format ? c.format(row) : row[c.key]}</td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
             </table>
             <div className="signatures">
               <div className="signature-box">
+                <div className="signature-img-wrap">
+                  {approvals['hr_manager']?.signature_url && <img src={approvals['hr_manager'].signature_url!} alt="" style={{height: 50 * (approvals['hr_manager'].signature_scale || 1), objectFit:'contain'}}/>}
+                </div>
                 <div className="signature-line">مدير قسم الموارد البشرية</div>
+                <div className="signature-person">{approvals['hr_manager']?.person_name}</div>
               </div>
               <div className="signature-box">
+                <div className="signature-img-wrap">
+                  {approvals['site_manager']?.signature_url && <img src={approvals['site_manager'].signature_url!} alt="" style={{height: 50 * (approvals['site_manager'].signature_scale || 1), objectFit:'contain'}}/>}
+                </div>
                 <div className="signature-line">مدير الموقع</div>
+                <div className="signature-person">{approvals['site_manager']?.person_name}</div>
               </div>
             </div>
             <div className="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — {new Date().toLocaleDateString('ar-IQ')}</div>
+            {letterheadBottom && <img className="lh-img-bottom" src={letterheadBottom} alt="footer"/>}
           </div>
 
           {/* محتوى الطباعة - التقرير المفصل لموظف واحد */}
@@ -889,27 +1039,17 @@ export default function Attendance({ readOnly = false }: { readOnly?: boolean })
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:14}}>
                   <thead>
                     <tr style={{background:'#f3f4f6'}}>
-                      {monthlyCols.map(h=>(
-                        <th key={h} style={{padding:'12px 16px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
+                      {displayedColumns.map(c=>(
+                        <th key={c.key} style={{padding:'12px 16px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{c.label}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {filteredMonthlySummary.map((row,idx)=>(
                       <tr key={idx} style={{borderBottom:'1px solid #e5e7eb'}}>
-                        <td style={{padding:'12px 16px',fontWeight:600,color:'#111827'}}>{row['الاسم']}</td>
-                        <td style={{padding:'12px 16px',color:'#6b7280'}}>{monthLabel(row['الشهر'])}</td>
-                        <td style={{padding:'12px 16px',textAlign:'center',color:'#15803d',fontWeight:700}}>{row['أيام الدوام']}</td>
-                        <td style={{padding:'12px 16px',textAlign:'center',color:'#0891b2'}}>{row['روتيشن']}</td>
-                        <td style={{padding:'12px 16px',textAlign:'center',color:'#1d4ed8'}}>{row['ايام الجمعه']}</td>
-                        <td style={{padding:'12px 16px',textAlign:'center',color:'#dc2626',fontWeight:700}}>{row['عدد ايام الغياب']}</td>
-                        <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة مرضية']}</td>
-                        <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة طارئة']}</td>
-                        <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة اعتيادية']}</td>
-                        <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة تعويضية']}</td>
-                        <td style={{padding:'12px 16px',textAlign:'center'}}>{row['إجازة وفاة']}</td>
-                        <td style={{padding:'12px 16px',textAlign:'center'}}>{row['عطلة رسمية']}</td>
-                        <td style={{padding:'12px 16px',textAlign:'center',fontWeight:700,background:'#f9fafb'}}>{row['مجموع الايام']}</td>
+                        {displayedColumns.map(c=>(
+                          <td key={c.key} style={{padding:'12px 16px', ...c.screenStyle}}>{c.format ? c.format(row) : row[c.key]}</td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
