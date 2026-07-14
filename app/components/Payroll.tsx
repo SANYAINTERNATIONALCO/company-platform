@@ -362,8 +362,8 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
       .signature-person { font-size: 12px; color: #374151; margin-top: 2px; }
       .footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 10px; color: #9ca3af; }
     `
-    const headerHtml = letterheadTop ? `<div style="width:100%;padding:0 10mm;"><img src="${letterheadTop}" style="width:100%;max-height:22mm;object-fit:contain;"/></div>` : ''
-    const footerHtml = letterheadBottom ? `<div style="width:100%;padding:0 10mm;"><img src="${letterheadBottom}" style="width:100%;max-height:18mm;object-fit:contain;"/></div>` : ''
+    const headerHtml = letterheadTop ? `<div style="width:100%;height:20mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${letterheadTop}" style="max-width:100%;max-height:100%;object-fit:contain;"/></div>` : ''
+    const footerHtml = letterheadBottom ? `<div style="width:100%;height:16mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${letterheadBottom}" style="max-width:100%;max-height:100%;object-fit:contain;"/></div>` : ''
 
     const rowsHtml = printEmployees.map((emp, idx) => {
       const c = calcNetSalary(emp)

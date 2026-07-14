@@ -454,8 +454,8 @@ export default function Attendance({ readOnly = false, userRole = '' }: { readOn
   `
 
   function letterheadHeaderFooter() {
-    const headerHtml = letterheadTop ? `<div style="width:100%;padding:0 10mm;"><img src="${letterheadTop}" style="width:100%;max-height:22mm;object-fit:contain;"/></div>` : ''
-    const footerHtml = letterheadBottom ? `<div style="width:100%;padding:0 10mm;"><img src="${letterheadBottom}" style="width:100%;max-height:18mm;object-fit:contain;"/></div>` : ''
+    const headerHtml = letterheadTop ? `<div style="width:100%;height:20mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${letterheadTop}" style="max-width:100%;max-height:100%;object-fit:contain;"/></div>` : ''
+    const footerHtml = letterheadBottom ? `<div style="width:100%;height:16mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${letterheadBottom}" style="max-width:100%;max-height:100%;object-fit:contain;"/></div>` : ''
     return { headerHtml, footerHtml }
   }
 
