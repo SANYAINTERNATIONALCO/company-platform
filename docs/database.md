@@ -11,7 +11,7 @@
 `employee_id, record_date, status, check_in, check_out` — الحالات نصوص عربية (انظر CLAUDE.md)
 
 ### overtime_records
-سجل دفعات الأوفرتايم. `employee_id, days_count, start_date, end_date, notes, created_at` — `start_date`/`end_date` اختياريان تماماً (فترة متصلة، تاريخ مرجعي واحد، أو بلا تاريخ لأيام متفرقة). كل صف يضيف `days_count` لعمود `employees.overtime_leave_balance` (يُدار من `app/components/Overtime.tsx`؛ الحذف يُرجع نفس العدد)
+سجل دفعات الأوفرتايم. `employee_id, days_count, start_date, end_date, notes, created_at` — `start_date`/`end_date` اختياريان تماماً (فترة متصلة، تاريخ مرجعي واحد، أو بلا تاريخ لأيام متفرقة). كل صف يضيف `days_count` لعمود `employees.overtime_leave_balance` (يُدار من `app/components/Overtime.tsx`؛ الحذف يُرجع نفس العدد). **التحويل يوم=يوم دائماً — لا يوجد تحويل بالساعات بهذا النظام**
 
 ### attendance_approvals
 توقيعات اعتماد الموقف الشهري (نفس نمط `payroll_approvals` لكن جدول مستقل). `UNIQUE(attendance_month, role_name)` — role_name: site_manager / hr_manager. أعمدة: `signature_url, signature_scale, person_name`. تُدار من `app/components/Attendance.tsx`، تظهر فقط عند اختيار شهر واحد بالضبط بواجهة الموقف الشهري
