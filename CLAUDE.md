@@ -9,12 +9,13 @@
 - Supabase: قاعدة بيانات Postgres + Auth + Storage (مفتاح anon مكتوب مباشرة داخل كل مكوّن — لا تغيّره)
 - النشر: Vercel تلقائياً عند `git push` إلى GitHub (SANYAINTERNATIONALCO/company-platform)
 - تطبيق أندرويد: Capacitor يفتح الموقع المباشر (مجلد android/)
-- مكتبات: recharts (رسوم بيانية)، xlsx (تصدير Excel)
+- مكتبات: recharts (رسوم بيانية)، xlsx (تصدير Excel)، Puppeteer (توليد PDF بالسيرفر — `puppeteer` محلياً، `puppeteer-core`+`@sparticuz/chromium` على Vercel)
 
 ## بنية المشروع
 - `app/page.tsx` — تسجيل الدخول، الشريط الجانبي (مجموعات: الموارد البشرية/المالية/الإدارة/النظام)، لوحة المعلومات، تحميل الدور، عرض الأقسام
 - `app/components/` — 13 قسماً مستقلاً: Employees, Attendance, Payroll, Documents, Custody, Contracts, Overtime, Finance, Receipts, Visa (يشمل دورات المغادرة والعودة), Tasks, Reports, ActivityLog
 - `app/logActivity.ts` — دالة مشتركة لسجل النشاطات
+- `app/pdfPrint.ts` + `app/api/pdf/route.ts` — توليد PDF حقيقي بالسيرفر (Puppeteer) بدل `window.print()`، مستخدم بـAttendance.tsx وDocuments.tsx وPayroll.tsx فقط (Finance.tsx وReceipts.tsx يبقيان على `window.print()`). `generatePdf()` يفصل الترويسة العلوية/السفلية كـheader/footer templates تتكرر بكل صفحة PDF، ومحتوى الصفحة يُغلَّف بـflex + min-height بوحدة mm حتى تلتصق التوقيعات بأسفل الصفحة بالحالة أحادية الصفحة
 - كل مكوّن ينشئ عميل supabase خاصاً به، وستايلات inline (لا يوجد CSS framework)
 
 ## قواعد حرجة — لا تخالفها أبداً

@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { logActivity } from '../logActivity'
+import { generatePdf, esc } from '../pdfPrint'
 import * as XLSX from 'xlsx'
 
 const supabase = createClient(
@@ -80,8 +81,6 @@ export default function Attendance({ readOnly = false, userRole = '' }: { readOn
   const [selectedDate, setSelectedDate] = useState('')
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
-  const printRef = useRef<HTMLDivElement>(null)
-  const printDetailRef = useRef<HTMLDivElement>(null)
 
   // فلترة
   const [searchName, setSearchName] = useState('')
@@ -432,89 +431,107 @@ export default function Attendance({ readOnly = false, userRole = '' }: { readOn
     alert('تم حذف سجلات هذا اليوم بالكامل')
   }
 
-  function handlePrintMonthly() {
-    const printContent = printRef.current
-    if (!printContent) return
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html dir="rtl" lang="ar">
-      <head>
-        <meta charset="UTF-8">
-        <title>الموقف الشهري</title>
-        <style>
-          @page { margin: 10mm; size: A4 landscape; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; direction: rtl; color: #111; padding: 0; }
-          .lh-img { width: 100%; object-fit: contain; margin-bottom: 20px; }
-          .lh-img-bottom { width: 100%; object-fit: contain; margin-top: 20px; }
-          .header { text-align: center; border-bottom: 3px solid #1e40af; padding-bottom: 16px; margin-bottom: 24px; }
-          .company-name { font-size: 22px; font-weight: bold; color: #1e40af; margin-bottom: 4px; }
-          .report-title { font-size: 16px; color: #374151; margin-bottom: 4px; }
-          .report-date { font-size: 13px; color: #6b7280; }
-          table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
-          th { background: #1e40af; color: #fff; padding: 9px 10px; text-align: center; font-weight: 600; white-space: nowrap; }
-          th:first-child { text-align: right; }
-          td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; text-align: center; }
-          td:first-child { text-align: right; font-weight: 600; }
-          tr:nth-child(even) { background: #f9fafb; }
-          .total-col { background: #eff6ff; font-weight: bold; color: #1e40af; }
-          .absent { color: #dc2626; font-weight: bold; }
-          .present { color: #15803d; font-weight: bold; }
-          .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ca3af; }
-          .signatures { display: flex; justify-content: space-between; margin-top: 60px; padding: 0 20px; }
-          .signature-box { text-align: center; min-width: 200px; }
-          .signature-img-wrap { height: 60px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px; }
-          .signature-line { border-top: 1px solid #111; margin-top: 8px; padding-top: 8px; font-size: 13px; font-weight: 600; color: #111827; }
-          .signature-person { font-size: 12px; color: #6b7280; margin-top: 2px; }
-        </style>
-      </head>
-      <body>${printContent.innerHTML}</body>
-      </html>
-    `)
-    printWindow.document.close()
-    printWindow.focus()
-    setTimeout(() => { printWindow.print(); printWindow.close() }, 500)
+  const reportStyleCss = `
+    .header { text-align: center; border-bottom: 3px solid #1e40af; padding-bottom: 16px; margin-bottom: 24px; }
+    .company-name { font-size: 22px; font-weight: bold; color: #1e40af; margin-bottom: 4px; }
+    .report-title { font-size: 16px; color: #374151; margin-bottom: 4px; }
+    .report-date { font-size: 13px; color: #6b7280; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
+    th { background: #1e40af; color: #fff; padding: 9px 10px; text-align: center; font-weight: 600; white-space: nowrap; }
+    th:first-child { text-align: right; }
+    td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; text-align: center; }
+    td:first-child { text-align: right; font-weight: 600; }
+    tr:nth-child(even) { background: #f9fafb; }
+    .total-col { background: #eff6ff; font-weight: bold; color: #1e40af; }
+    .absent { color: #dc2626; font-weight: bold; }
+    .present { color: #15803d; font-weight: bold; }
+    .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ca3af; }
+    .signatures { display: flex; justify-content: space-between; padding: 0 20px; }
+    .signature-box { text-align: center; min-width: 200px; }
+    .signature-img-wrap { height: 60px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px; }
+    .signature-line { border-top: 1px solid #111; margin-top: 8px; padding-top: 8px; font-size: 13px; font-weight: 600; color: #111827; }
+    .signature-person { font-size: 12px; color: #6b7280; margin-top: 2px; }
+  `
+
+  function letterheadHeaderFooter() {
+    const headerHtml = letterheadTop ? `<div style="width:100%;padding:0 10mm;"><img src="${letterheadTop}" style="width:100%;max-height:22mm;object-fit:contain;"/></div>` : ''
+    const footerHtml = letterheadBottom ? `<div style="width:100%;padding:0 10mm;"><img src="${letterheadBottom}" style="width:100%;max-height:18mm;object-fit:contain;"/></div>` : ''
+    return { headerHtml, footerHtml }
   }
 
-  function handlePrintDetailedReport() {
-    const printContent = printDetailRef.current
-    if (!printContent) return
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html dir="rtl" lang="ar">
-      <head>
-        <meta charset="UTF-8">
-        <title>التقرير المفصل</title>
-        <style>
-          @page { margin: 12mm; size: A4; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; direction: rtl; color: #111; padding: 0; }
-          .header { text-align: center; border-bottom: 3px solid #1e40af; padding-bottom: 16px; margin-bottom: 24px; }
-          .company-name { font-size: 22px; font-weight: bold; color: #1e40af; margin-bottom: 4px; }
-          .report-title { font-size: 16px; color: #374151; margin-bottom: 4px; }
-          .report-date { font-size: 13px; color: #6b7280; }
-          table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
-          th { background: #1e40af; color: #fff; padding: 9px 10px; text-align: center; font-weight: 600; white-space: nowrap; }
-          th:first-child { text-align: right; }
-          td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; text-align: center; }
-          td:first-child { text-align: right; font-weight: 600; }
-          tr:nth-child(even) { background: #f9fafb; }
-          .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ca3af; }
-          .signatures { display: flex; justify-content: space-between; margin-top: 60px; padding: 0 20px; }
-          .signature-box { text-align: center; min-width: 200px; }
-          .signature-line { border-top: 1px solid #111; margin-top: 50px; padding-top: 8px; font-size: 13px; font-weight: 600; color: #111827; }
-        </style>
-      </head>
-      <body>${printContent.innerHTML}</body>
-      </html>
-    `)
-    printWindow.document.close()
-    printWindow.focus()
-    setTimeout(() => { printWindow.print(); printWindow.close() }, 500)
+  function signatureBoxHtml(role: string, label: string) {
+    const a = approvals[role]
+    return `
+      <div class="signature-box">
+        <div class="signature-img-wrap">${a?.signature_url ? `<img src="${a.signature_url}" style="height:${50 * (a.signature_scale || 1)}px;object-fit:contain;"/>` : ''}</div>
+        <div class="signature-line">${label}</div>
+        <div class="signature-person">${esc(a?.person_name)}</div>
+      </div>
+    `
+  }
+
+  async function handlePrintMonthly() {
+    const { headerHtml, footerHtml } = letterheadHeaderFooter()
+    const tableRows = filteredMonthlySummary.map(row => `
+      <tr>${displayedColumns.map(c => `<td class="${c.printClassName || ''}">${esc(c.format ? c.format(row) : row[c.key])}</td>`).join('')}</tr>
+    `).join('')
+    const contentHtml = `
+      <div class="header">
+        <div class="company-name">Sanya International Company</div>
+        <div class="report-title">الموقف الشهري — ${esc(selectedMonths.map(monthLabel).join(' ، '))}</div>
+        <div class="report-date">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-IQ')}</div>
+      </div>
+      <table>
+        <thead><tr>${displayedColumns.map(c => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    `
+    const signaturesHtml = `
+      <div class="signatures">
+        ${signatureBoxHtml('hr_manager', 'مدير قسم الموارد البشرية')}
+        ${signatureBoxHtml('site_manager', 'مدير الموقع')}
+      </div>
+      <div class="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — ${new Date().toLocaleDateString('ar-IQ')}</div>
+    `
+    const bodyHtml = `<div style="display:flex;flex-direction:column;min-height:165mm;"><div>${contentHtml}</div><div style="flex:1"></div><div>${signaturesHtml}</div></div>`
+    await generatePdf({
+      bodyHtml, styleCss: reportStyleCss, headerHtml, footerHtml, landscape: true,
+      filename: `الموقف الشهري - ${selectedMonths.map(monthLabel).join('-')}.pdf`
+    })
+  }
+
+  async function handlePrintDetailedReport() {
+    const empId = selectedEmployeeIds[0]
+    const details = dailyDetails[empId]
+    if (!details) return
+    const { headerHtml, footerHtml } = letterheadHeaderFooter()
+    const empName = employees.find(e => e.id === empId)?.name || ''
+    const rowsHtml = details.map(d => `
+      <tr><td>${d.record_date}</td><td>${esc(d.status)}</td><td>${d.check_in || '—'}</td><td>${d.check_out || '—'}</td><td>${esc(d.notes) || '—'}</td></tr>
+    `).join('')
+    const contentHtml = `
+      <div class="header">
+        <div class="company-name">Sanya International Company</div>
+        <div class="report-title">تقرير مفصل — ${esc(empName)}</div>
+        <div class="report-date">الأشهر: ${esc(selectedMonths.map(monthLabel).join(' ، '))} — تاريخ الطباعة: ${new Date().toLocaleDateString('ar-IQ')}</div>
+      </div>
+      <table>
+        <thead><tr><th>التاريخ</th><th>الحالة</th><th>دخول</th><th>خروج</th><th>ملاحظات</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    `
+    const signaturesHtml = `
+      <div class="signatures">
+        ${signatureBoxHtml('hr_manager', 'مدير قسم الموارد البشرية')}
+        ${signatureBoxHtml('site_manager', 'مدير الموقع')}
+      </div>
+      <div class="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — ${new Date().toLocaleDateString('ar-IQ')}</div>
+    `
+    const bodyHtml = `<div style="display:flex;flex-direction:column;min-height:252mm;"><div>${contentHtml}</div><div style="flex:1"></div><div>${signaturesHtml}</div></div>`
+    await generatePdf({
+      bodyHtml, styleCss: reportStyleCss, headerHtml, footerHtml, landscape: false,
+      filename: `تقرير مفصل - ${empName}.pdf`
+    })
   }
 
   function handleExportExcel() {
@@ -944,86 +961,6 @@ export default function Attendance({ readOnly = false, userRole = '' }: { readOn
                     )
                   })}
               </div>
-            </div>
-          )}
-
-          {/* محتوى الطباعة */}
-          <div ref={printRef} style={{display:'none'}}>
-            {letterheadTop && <img className="lh-img" src={letterheadTop} alt="letterhead"/>}
-            <div className="header">
-              <div className="company-name">Sanya International Company</div>
-              <div className="report-title">الموقف الشهري — {selectedMonths.map(monthLabel).join(' ، ')}</div>
-              <div className="report-date">تاريخ الطباعة: {new Date().toLocaleDateString('ar-IQ')}</div>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  {displayedColumns.map(c => <th key={c.key}>{c.label}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredMonthlySummary.map((row, idx) => (
-                  <tr key={idx}>
-                    {displayedColumns.map(c => (
-                      <td key={c.key} className={c.printClassName}>{c.format ? c.format(row) : row[c.key]}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="signatures">
-              <div className="signature-box">
-                <div className="signature-img-wrap">
-                  {approvals['hr_manager']?.signature_url && <img src={approvals['hr_manager'].signature_url!} alt="" style={{height: 50 * (approvals['hr_manager'].signature_scale || 1), objectFit:'contain'}}/>}
-                </div>
-                <div className="signature-line">مدير قسم الموارد البشرية</div>
-                <div className="signature-person">{approvals['hr_manager']?.person_name}</div>
-              </div>
-              <div className="signature-box">
-                <div className="signature-img-wrap">
-                  {approvals['site_manager']?.signature_url && <img src={approvals['site_manager'].signature_url!} alt="" style={{height: 50 * (approvals['site_manager'].signature_scale || 1), objectFit:'contain'}}/>}
-                </div>
-                <div className="signature-line">مدير الموقع</div>
-                <div className="signature-person">{approvals['site_manager']?.person_name}</div>
-              </div>
-            </div>
-            <div className="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — {new Date().toLocaleDateString('ar-IQ')}</div>
-            {letterheadBottom && <img className="lh-img-bottom" src={letterheadBottom} alt="footer"/>}
-          </div>
-
-          {/* محتوى الطباعة - التقرير المفصل لموظف واحد */}
-          {selectedEmployeeIds.length === 1 && dailyDetails[selectedEmployeeIds[0]] && (
-            <div ref={printDetailRef} style={{display:'none'}}>
-              <div className="header">
-                <div className="company-name">Sanya International Company</div>
-                <div className="report-title">تقرير مفصل — {employees.find(e=>e.id===selectedEmployeeIds[0])?.name}</div>
-                <div className="report-date">الأشهر: {selectedMonths.map(monthLabel).join(' ، ')} — تاريخ الطباعة: {new Date().toLocaleDateString('ar-IQ')}</div>
-              </div>
-              <table>
-                <thead>
-                  <tr><th>التاريخ</th><th>الحالة</th><th>دخول</th><th>خروج</th><th>ملاحظات</th></tr>
-                </thead>
-                <tbody>
-                  {dailyDetails[selectedEmployeeIds[0]].map((d,i) => (
-                    <tr key={i}>
-                      <td>{d.record_date}</td>
-                      <td>{d.status}</td>
-                      <td>{d.check_in || '—'}</td>
-                      <td>{d.check_out || '—'}</td>
-                      <td>{d.notes || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="signatures">
-                <div className="signature-box">
-                  <div className="signature-line">مدير قسم الموارد البشرية</div>
-                </div>
-                <div className="signature-box">
-                  <div className="signature-line">مدير الموقع</div>
-                </div>
-              </div>
-              <div className="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — {new Date().toLocaleDateString('ar-IQ')}</div>
             </div>
           )}
 

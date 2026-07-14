@@ -1,7 +1,8 @@
 'use client'
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { logActivity } from '../logActivity'
+import { generatePdf, esc } from '../pdfPrint'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -64,7 +65,8 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
   const [approvals, setApprovals] = useState<Record<string, Approval>>({})
   const [uploadingSig, setUploadingSig] = useState<string | null>(null)
   const [sigScaleDraft, setSigScaleDraft] = useState<Record<string, number>>({})
-  const printRef = useRef<HTMLDivElement>(null)
+  const [letterheadTop, setLetterheadTop] = useState<string | null>(null)
+  const [letterheadBottom, setLetterheadBottom] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [searchName, setSearchName] = useState('')
   const [selectedForPrint, setSelectedForPrint] = useState<string[]>([])
@@ -76,7 +78,16 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
     setSelectedMonth(ym)
     loadEmployees()
     loadArchivedMonthsList()
+    loadLetterheads()
   }, [])
+
+  async function loadLetterheads() {
+    const { data } = await supabase.from('document_assets').select('*')
+    ;(data || []).forEach((a: any) => {
+      if (a.asset_key === 'letterhead_top') setLetterheadTop(a.asset_url)
+      if (a.asset_key === 'letterhead_bottom') setLetterheadBottom(a.asset_url)
+    })
+  }
 
   useEffect(() => {
     if (selectedMonth && employees.length > 0) {
@@ -329,52 +340,103 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
 
   const bothApproved = approvals['site_manager']?.signature_url && approvals['hr_manager']?.signature_url
 
-  function handlePrint() {
-    const printContent = printRef.current
-    if (!printContent) return
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html dir="rtl" lang="ar">
-      <head>
-        <meta charset="UTF-8">
-        <title>قائمة الرواتب - ${monthLabel(selectedMonth)}</title>
-        <style>
-          @page { margin: 10mm; size: A4 landscape; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          html, body { height: 100%; }
-          body { font-family: Arial, sans-serif; direction: rtl; color: #111; padding: 0; display: flex; flex-direction: column; min-height: 100%; }
-          .content { flex: 1; }
-          .header { text-align: center; border-bottom: 3px solid #1e40af; padding-bottom: 14px; margin-bottom: 20px; }
-          .company-name { font-size: 20px; font-weight: bold; color: #1e40af; margin-bottom: 4px; }
-          .report-title { font-size: 16px; font-weight: 700; color: #374151; }
-          .report-date { font-size: 12px; color: #6b7280; margin-top: 4px; }
-          table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px; }
-          th { background: #1e40af; color: #fff; padding: 7px 8px; text-align: center; font-weight: 600; white-space: nowrap; }
-          th:first-child { text-align: right; }
-          td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: center; }
-          td:first-child { text-align: right; font-weight: 600; }
-          tr:nth-child(even) { background: #f9fafb; }
-          .total-row td { background: #eff6ff; font-weight: bold; color: #1e40af; border-top: 2px solid #1e40af; }
-          .deduction { color: #dc2626; }
-          .net { font-weight: bold; color: #15803d; }
-          .signatures { display: flex; justify-content: space-between; padding: 0 30px 10px; page-break-inside: avoid; }
-          .signature-box { text-align: center; min-width: 220px; }
-          .signature-img-wrap { height: 70px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px; }
-          .signature-line { border-top: 1px solid #111; padding-top: 8px; font-size: 13px; font-weight: 700; color: #111827; }
-          .signature-person { font-size: 12px; color: #374151; margin-top: 2px; }
-          .footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 10px; color: #9ca3af; }
-        </style>
-      </head>
-      <body>
-        <div class="content">${printContent.innerHTML}</div>
-      </body>
-      </html>
-    `)
-    printWindow.document.close()
-    printWindow.focus()
-    setTimeout(() => { printWindow.print(); printWindow.close() }, 500)
+  async function handlePrint() {
+    const styleCss = `
+      .header { text-align: center; border-bottom: 3px solid #1e40af; padding-bottom: 14px; margin-bottom: 20px; }
+      .company-name { font-size: 20px; font-weight: bold; color: #1e40af; margin-bottom: 4px; }
+      .report-title { font-size: 16px; font-weight: 700; color: #374151; }
+      .report-date { font-size: 12px; color: #6b7280; margin-top: 4px; }
+      table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px; }
+      th { background: #1e40af; color: #fff; padding: 7px 8px; text-align: center; font-weight: 600; white-space: nowrap; }
+      th:first-child { text-align: right; }
+      td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: center; }
+      td:first-child { text-align: right; font-weight: 600; }
+      tr:nth-child(even) { background: #f9fafb; }
+      .total-row td { background: #eff6ff; font-weight: bold; color: #1e40af; border-top: 2px solid #1e40af; }
+      .deduction { color: #dc2626; }
+      .net { font-weight: bold; color: #15803d; }
+      .signatures { display: flex; justify-content: space-between; padding: 0 30px 10px; }
+      .signature-box { text-align: center; min-width: 220px; }
+      .signature-img-wrap { height: 70px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px; }
+      .signature-line { border-top: 1px solid #111; padding-top: 8px; font-size: 13px; font-weight: 700; color: #111827; }
+      .signature-person { font-size: 12px; color: #374151; margin-top: 2px; }
+      .footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 10px; color: #9ca3af; }
+    `
+    const headerHtml = letterheadTop ? `<div style="width:100%;padding:0 10mm;"><img src="${letterheadTop}" style="width:100%;max-height:22mm;object-fit:contain;"/></div>` : ''
+    const footerHtml = letterheadBottom ? `<div style="width:100%;padding:0 10mm;"><img src="${letterheadBottom}" style="width:100%;max-height:18mm;object-fit:contain;"/></div>` : ''
+
+    const rowsHtml = printEmployees.map((emp, idx) => {
+      const c = calcNetSalary(emp)
+      const d = getDraft(emp.id)
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${esc(emp.name)}</td>
+          <td>${esc(emp.job_title)}</td>
+          <td>${formatAmount(emp.base_salary || 0)}</td>
+          <td>${c.absentDays}</td>
+          <td class="deduction">${c.absentDeduction > 0 ? '-' + formatAmount(c.absentDeduction) : '—'}</td>
+          <td class="deduction">${c.advanceDeduction > 0 ? '-' + formatAmount(c.advanceDeduction) : '—'}</td>
+          <td>${c.extraAmount > 0 ? '+' + formatAmount(c.extraAmount) : '—'}</td>
+          <td class="net">${formatAmount(c.net)}</td>
+          <td>${esc(d.notes) || '—'}</td>
+        </tr>
+      `
+    }).join('')
+
+    const contentHtml = `
+      <div class="header">
+        <div class="company-name">Sanya International Company</div>
+        <div class="report-title">قائمة الرواتب لموظفي شركة سانيا الدولية — شهر ${monthLabel(selectedMonth)}</div>
+        <div class="report-date">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-IQ')}</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>الاسم</th><th>المنصب</th><th>الراتب الأساسي</th><th>أيام الغياب</th><th>خصم الغياب</th>
+            <th>استقطاع السلفة</th><th>مبلغ إضافي</th><th>صافي الراتب</th><th>ملاحظات</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+          <tr class="total-row">
+            <td colspan="3">الإجمالي</td>
+            <td>${formatAmount(totals.totalBase)}</td>
+            <td>—</td>
+            <td>-${formatAmount(totals.totalAbsentDed)}</td>
+            <td>-${formatAmount(totals.totalAdvanceDed)}</td>
+            <td>+${formatAmount(totals.totalExtra)}</td>
+            <td>${formatAmount(totals.totalNet)}</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+    `
+    const signaturesHtml = `
+      <div class="signatures">
+        <div class="signature-box">
+          <div class="signature-img-wrap">
+            ${approvals['site_manager']?.signature_url ? `<img src="${approvals['site_manager'].signature_url}" style="height:${50 * (sigScaleDraft['site_manager'] || 1)}px;object-fit:contain;"/>` : ''}
+          </div>
+          <div class="signature-line">مدير الموقع</div>
+          <div class="signature-person">${esc(approvals['site_manager']?.person_name)}</div>
+        </div>
+        <div class="signature-box">
+          <div class="signature-img-wrap">
+            ${approvals['hr_manager']?.signature_url ? `<img src="${approvals['hr_manager'].signature_url}" style="height:${50 * (sigScaleDraft['hr_manager'] || 1)}px;object-fit:contain;"/>` : ''}
+          </div>
+          <div class="signature-line">مدير قسم الموارد البشرية</div>
+          <div class="signature-person">${esc(approvals['hr_manager']?.person_name)}</div>
+        </div>
+      </div>
+      <div class="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — ${new Date().toLocaleDateString('ar-IQ')}</div>
+    `
+    const bodyHtml = `<div style="display:flex;flex-direction:column;min-height:165mm;"><div>${contentHtml}</div><div style="flex:1"></div><div>${signaturesHtml}</div></div>`
+
+    await generatePdf({
+      bodyHtml, styleCss, headerHtml, footerHtml, landscape: true,
+      filename: `قائمة الرواتب - ${monthLabel(selectedMonth)}.pdf`
+    })
   }
 
   const inputSm = { padding:'6px 8px', borderRadius:6, border:'1px solid #d1d5db', fontSize:12, color:'#111827', width:'100%', boxSizing:'border-box' as const }
@@ -478,70 +540,6 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
           {!bothApproved && <span style={{fontSize:12,color:'#b45309',fontWeight:600}}>⚠ لم تكتمل موافقة الطرفين على كشف هذا الشهر بعد</span>}
         </div>
       )}
-
-      {/* محتوى الطباعة المخفي */}
-      <div ref={printRef} style={{display:'none'}}>
-        <div className="header">
-          <div className="company-name">Sanya International Company</div>
-          <div className="report-title">قائمة الرواتب لموظفي شركة سانيا الدولية — شهر {monthLabel(selectedMonth)}</div>
-          <div className="report-date">تاريخ الطباعة: {new Date().toLocaleDateString('ar-IQ')}</div>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th><th>الاسم</th><th>المنصب</th><th>الراتب الأساسي</th><th>أيام الغياب</th><th>خصم الغياب</th>
-              <th>استقطاع السلفة</th><th>مبلغ إضافي</th><th>صافي الراتب</th><th>ملاحظات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {printEmployees.map((emp, idx) => {
-              const c = calcNetSalary(emp)
-              const d = getDraft(emp.id)
-              return (
-                <tr key={emp.id}>
-                  <td>{idx+1}</td>
-                  <td>{emp.name}</td>
-                  <td>{emp.job_title}</td>
-                  <td>{formatAmount(emp.base_salary || 0)}</td>
-                  <td>{c.absentDays}</td>
-                  <td className="deduction">{c.absentDeduction > 0 ? '-' + formatAmount(c.absentDeduction) : '—'}</td>
-                  <td className="deduction">{c.advanceDeduction > 0 ? '-' + formatAmount(c.advanceDeduction) : '—'}</td>
-                  <td>{c.extraAmount > 0 ? '+' + formatAmount(c.extraAmount) : '—'}</td>
-                  <td className="net">{formatAmount(c.net)}</td>
-                  <td>{d.notes || '—'}</td>
-                </tr>
-              )
-            })}
-            <tr className="total-row">
-              <td colSpan={3}>الإجمالي</td>
-              <td>{formatAmount(totals.totalBase)}</td>
-              <td>—</td>
-              <td>-{formatAmount(totals.totalAbsentDed)}</td>
-              <td>-{formatAmount(totals.totalAdvanceDed)}</td>
-              <td>+{formatAmount(totals.totalExtra)}</td>
-              <td>{formatAmount(totals.totalNet)}</td>
-              <td>—</td>
-            </tr>
-          </tbody>
-        </table>
-        <div className="signatures">
-          <div className="signature-box">
-            <div className="signature-img-wrap">
-              {approvals['site_manager']?.signature_url && <img src={approvals['site_manager'].signature_url!} alt="" style={{height: 50 * (sigScaleDraft['site_manager'] || 1), objectFit:'contain'}}/>}
-            </div>
-            <div className="signature-line">مدير الموقع</div>
-            <div className="signature-person">{approvals['site_manager']?.person_name}</div>
-          </div>
-          <div className="signature-box">
-            <div className="signature-img-wrap">
-              {approvals['hr_manager']?.signature_url && <img src={approvals['hr_manager'].signature_url!} alt="" style={{height: 50 * (sigScaleDraft['hr_manager'] || 1), objectFit:'contain'}}/>}
-            </div>
-            <div className="signature-line">مدير قسم الموارد البشرية</div>
-            <div className="signature-person">{approvals['hr_manager']?.person_name}</div>
-          </div>
-        </div>
-        <div className="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — {new Date().toLocaleDateString('ar-IQ')}</div>
-      </div>
 
       {/* الجدول التفاعلي */}
       {loading ? (

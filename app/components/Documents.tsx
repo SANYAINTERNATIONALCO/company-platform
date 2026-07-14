@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { logActivity } from '../logActivity'
+import { generatePdf, esc } from '../pdfPrint'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -317,70 +318,54 @@ export default function Documents({ readOnly = false }: { readOnly?: boolean }) 
     setTimeout(() => printDocument(docContent), 400)
   }
 
-  function printDocument(content: DocContent) {
+  async function printDocument(content: DocContent) {
     const isAr = content.lang === 'ar'
     const fs = content.fontSize || 15
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html dir="${isAr ? 'rtl' : 'ltr'}" lang="${isAr ? 'ar' : 'en'}">
-      <head>
-        <meta charset="UTF-8">
-        <title>${content.subject} - ${content.number}</title>
-        <style>
-          @page { margin: 12mm; size: A4; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          html, body { height: 100%; }
-          body { font-family: 'Times New Roman', Arial, serif; direction: ${isAr ? 'rtl' : 'ltr'}; color: #111; display: flex; flex-direction: column; min-height: 100%; font-size: ${fs}px; }
-          .lh-img { width: 100%; object-fit: contain; margin-bottom: 20px; }
-          .letterhead-fallback { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px double #1e40af; padding-bottom: 12px; margin-bottom: 30px; direction: rtl; }
-          .lh-ar { font-size: 11px; font-weight: bold; color: #1e40af; text-align: right; line-height: 1.7; max-width: 220px; }
-          .lh-en { font-size: 10px; font-weight: bold; color: #1e40af; text-align: left; line-height: 1.5; max-width: 220px; direction: ltr; }
-          .doc-date { text-align: ${isAr ? 'right' : 'left'}; font-size: ${fs - 1}px; font-weight: 600; margin-bottom: 22px; }
-          .doc-to { font-size: ${fs}px; font-weight: 700; margin-bottom: 14px; }
-          .doc-subject { font-size: ${fs + 1}px; font-weight: 700; margin-bottom: 24px; text-align: center; }
-          .doc-subject span { border-bottom: 2px solid #111; padding-bottom: 2px; }
-          .doc-greeting { font-size: ${fs}px; margin-bottom: 16px; }
-          .doc-body { font-size: ${fs}px; line-height: 2.1; text-align: justify; white-space: pre-line; }
-          .sig-area { margin-top: 55px; text-align: ${isAr ? 'left' : 'right'}; ${isAr ? 'padding-left' : 'padding-right'}: 50px; }
-          .sig-img { height: ${Math.round(65 * sigScale)}px; object-fit: contain; display: block; ${isAr ? 'margin-right: auto; margin-left: 20px' : 'margin-left: auto; margin-right: 20px'}; }
-          .sig-title { font-size: 14px; font-weight: 700; margin-top: 6px; }
-          .spacer { flex: 1; }
-          .doc-number-row { font-weight: 700; color: #374151; font-size: 12px; margin-bottom: 6px; text-align: ${isAr ? 'left' : 'right'}; }
-          .footer-img { width: 100%; object-fit: contain; }
-          .footer-fallback { border-top: 2px solid #1e40af; padding-top: 8px; text-align: center; font-size: 10px; color: #6b7280; }
-        </style>
-      </head>
-      <body>
-        ${letterheadTop
-          ? `<img class="lh-img" src="${letterheadTop}" alt="letterhead"/>`
-          : `<div class="letterhead-fallback">
-              <div class="lh-ar">شركة سانيا الدولية<br/>للتجارة والمقاولات العامة والاستثمارات<br/>الصناعية والعقارية وصناعة الزجاج<br/>المحدودة المسؤولية<br/>رأسمالها (5000000000) مليار دينار</div>
-              <div class="lh-en">Sanya International Com.<br/>For Trading & General Contracting, Industrial<br/>& Real Estate Investments & Glass Industry<br/>Limited Liability<br/>Capital (5000000000) Milyard Dinar</div>
-            </div>`
-        }
-        <div class="doc-date">${isAr ? 'التاريخ' : 'Date'}: ${content.date}</div>
-        <div class="doc-to">${isAr ? 'إلى/ ' : ''}${content.to}</div>
-        <div class="doc-subject"><span>${isAr ? 'م/ ' : 'Subject: '}${content.subject}</span></div>
-        ${isAr ? '<div class="doc-greeting">تحية طيبة</div>' : ''}
-        <div class="doc-body">${content.body}</div>
-        <div class="sig-area">
-          ${hrSignature?.signature_url ? `<img class="sig-img" src="${hrSignature.signature_url}" alt=""/>` : '<div style="height:65px"></div>'}
-          <div class="sig-title">${isAr ? 'قسم الموارد البشرية' : 'HR Department'}</div>
-        </div>
-        <div class="spacer"></div>
-        <div class="doc-number-row">${content.number}</div>
-        ${letterheadBottom
-          ? `<img class="footer-img" src="${letterheadBottom}" alt="footer"/>`
-          : `<div class="footer-fallback">${isAr ? 'العراق - بغداد' : 'Iraq - Baghdad'}</div>`
-        }
-      </body>
-      </html>
-    `)
-    printWindow.document.close()
-    printWindow.focus()
-    setTimeout(() => { printWindow.print() }, 700)
+
+    const styleCss = `
+      body { font-family: 'Cairo', 'Times New Roman', Arial, serif; direction: ${isAr ? 'rtl' : 'ltr'}; color: #111; font-size: ${fs}px; }
+      .doc-date { text-align: ${isAr ? 'right' : 'left'}; font-size: ${fs - 1}px; font-weight: 600; margin-bottom: 22px; }
+      .doc-to { font-size: ${fs}px; font-weight: 700; margin-bottom: 14px; }
+      .doc-subject { font-size: ${fs + 1}px; font-weight: 700; margin-bottom: 24px; text-align: center; }
+      .doc-subject span { border-bottom: 2px solid #111; padding-bottom: 2px; }
+      .doc-greeting { font-size: ${fs}px; margin-bottom: 16px; }
+      .doc-body { font-size: ${fs}px; line-height: 2.1; text-align: justify; white-space: pre-line; }
+      .sig-area { margin-top: 55px; text-align: ${isAr ? 'left' : 'right'}; ${isAr ? 'padding-left' : 'padding-right'}: 50px; }
+      .sig-img { height: ${Math.round(65 * sigScale)}px; object-fit: contain; display: block; ${isAr ? 'margin-right: auto; margin-left: 20px' : 'margin-left: auto; margin-right: 20px'}; }
+      .sig-title { font-size: 14px; font-weight: 700; margin-top: 6px; }
+      .doc-number-row { font-weight: 700; color: #374151; font-size: 12px; margin-bottom: 6px; text-align: ${isAr ? 'left' : 'right'}; }
+    `
+
+    const headerHtml = letterheadTop
+      ? `<div style="width:100%;padding:0 10mm;"><img src="${letterheadTop}" style="width:100%;max-height:22mm;object-fit:contain;"/></div>`
+      : `<div style="width:100%;padding:0 10mm;display:flex;justify-content:space-between;align-items:center;direction:rtl;font-family:Arial,sans-serif;">
+          <div style="font-size:9px;font-weight:bold;color:#1e40af;text-align:right;line-height:1.5;max-width:220px;">شركة سانيا الدولية<br/>للتجارة والمقاولات العامة والاستثمارات<br/>الصناعية والعقارية وصناعة الزجاج<br/>المحدودة المسؤولية<br/>رأسمالها (5000000000) مليار دينار</div>
+          <div style="font-size:8px;font-weight:bold;color:#1e40af;text-align:left;line-height:1.4;max-width:220px;direction:ltr;">Sanya International Com.<br/>For Trading & General Contracting, Industrial<br/>& Real Estate Investments & Glass Industry<br/>Limited Liability<br/>Capital (5000000000) Milyard Dinar</div>
+        </div>`
+    const footerHtml = letterheadBottom
+      ? `<div style="width:100%;padding:0 10mm;"><img src="${letterheadBottom}" style="width:100%;max-height:18mm;object-fit:contain;"/></div>`
+      : `<div style="width:100%;padding:0 10mm;text-align:center;font-size:9px;color:#6b7280;font-family:Arial,sans-serif;">${isAr ? 'العراق - بغداد' : 'Iraq - Baghdad'}</div>`
+
+    const mainHtml = `
+      <div class="doc-date">${isAr ? 'التاريخ' : 'Date'}: ${content.date}</div>
+      <div class="doc-to">${isAr ? 'إلى/ ' : ''}${esc(content.to)}</div>
+      <div class="doc-subject"><span>${isAr ? 'م/ ' : 'Subject: '}${esc(content.subject)}</span></div>
+      ${isAr ? '<div class="doc-greeting">تحية طيبة</div>' : ''}
+      <div class="doc-body">${esc(content.body)}</div>
+    `
+    const trailingHtml = `
+      <div class="sig-area">
+        ${hrSignature?.signature_url ? `<img class="sig-img" src="${hrSignature.signature_url}" alt=""/>` : '<div style="height:65px"></div>'}
+        <div class="sig-title">${isAr ? 'قسم الموارد البشرية' : 'HR Department'}</div>
+      </div>
+      <div class="doc-number-row">${content.number}</div>
+    `
+    const bodyHtml = `<div style="display:flex;flex-direction:column;min-height:252mm;"><div>${mainHtml}</div><div style="flex:1"></div><div>${trailingHtml}</div></div>`
+
+    await generatePdf({
+      bodyHtml, styleCss, headerHtml, footerHtml, landscape: false,
+      filename: `${content.subject} - ${content.number}.pdf`
+    })
   }
 
   async function deleteDocument(doc: IssuedDoc) {
