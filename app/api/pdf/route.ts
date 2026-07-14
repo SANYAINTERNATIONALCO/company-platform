@@ -13,6 +13,28 @@ interface PdfRequestBody {
   marginBottom?: string
 }
 
+// Puppeteer's header/footer templates don't wait for external resources to
+// load before the PDF is captured, so <img src="https://..."> silently
+// fails to render (and can drop the rest of the template with it). Inlining
+// the image as a base64 data URI makes it available synchronously.
+async function inlineImages(html: string): Promise<string> {
+  const urls = [...html.matchAll(/src="(https?:\/\/[^"]+)"/g)].map(m => m[1])
+  let result = html
+  for (const url of [...new Set(urls)]) {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) continue
+      const contentType = res.headers.get('content-type') || 'image/png'
+      const buffer = Buffer.from(await res.arrayBuffer())
+      const dataUri = `data:${contentType};base64,${buffer.toString('base64')}`
+      result = result.split(url).join(dataUri)
+    } catch {
+      // إذا فشل تحميل الصورة، تُترك الرابط الأصلي (سيظهر فارغاً بدل تعطيل الترويسة بالكامل)
+    }
+  }
+  return result
+}
+
 async function getBrowser() {
   const isLocal = !process.env.VERCEL_ENV
   if (isLocal) {
@@ -31,7 +53,11 @@ async function getBrowser() {
 
 export async function POST(req: NextRequest) {
   const body: PdfRequestBody = await req.json()
-  const { bodyHtml, styleCss, headerHtml, footerHtml, landscape, marginTop, marginBottom } = body
+  const { bodyHtml, styleCss, landscape, marginTop, marginBottom } = body
+  const [headerHtml, footerHtml] = await Promise.all([
+    body.headerHtml ? inlineImages(body.headerHtml) : Promise.resolve(body.headerHtml),
+    body.footerHtml ? inlineImages(body.footerHtml) : Promise.resolve(body.footerHtml)
+  ])
 
   const html = `
     <!DOCTYPE html>
