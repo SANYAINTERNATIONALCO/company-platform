@@ -362,9 +362,6 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
       .signature-person { font-size: 12px; color: #374151; margin-top: 2px; }
       .footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 10px; color: #9ca3af; }
     `
-    const headerHtml = letterheadTop ? `<div style="width:100%;height:20mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${letterheadTop}" style="max-width:100%;max-height:100%;object-fit:contain;"/></div>` : ''
-    const footerHtml = letterheadBottom ? `<div style="width:100%;height:16mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${letterheadBottom}" style="max-width:100%;max-height:100%;object-fit:contain;"/></div>` : ''
-
     const rowsHtml = printEmployees.map((emp, idx) => {
       const c = calcNetSalary(emp)
       const d = getDraft(emp.id)
@@ -431,10 +428,10 @@ export default function Payroll({ readOnly = false, userRole = '' }: { readOnly?
       </div>
       <div class="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — ${new Date().toLocaleDateString('ar-IQ')}</div>
     `
-    const bodyHtml = `<div style="display:flex;flex-direction:column;min-height:165mm;"><div>${contentHtml}</div><div style="flex:1"></div><div>${signaturesHtml}</div></div>`
-
     await generatePdf({
-      bodyHtml, styleCss, headerHtml, footerHtml, landscape: true,
+      contentHtml, signatureHtml: signaturesHtml, styleCss,
+      headerImageUrl: letterheadTop || undefined, footerImageUrl: letterheadBottom || undefined,
+      landscape: true,
       filename: `قائمة الرواتب - ${monthLabel(selectedMonth)}.pdf`
     })
   }

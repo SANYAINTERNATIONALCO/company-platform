@@ -4,13 +4,14 @@ export function esc(s: string | number | null | undefined): string {
 }
 
 interface GeneratePdfOptions {
-  bodyHtml: string
+  contentHtml: string
+  signatureHtml: string
   styleCss: string
-  headerHtml?: string
-  footerHtml?: string
+  headerImageUrl?: string
+  headerFallbackHtml?: string
+  footerImageUrl?: string
+  footerFallbackHtml?: string
   landscape?: boolean
-  marginTop?: string
-  marginBottom?: string
   filename: string
 }
 

@@ -336,15 +336,11 @@ export default function Documents({ readOnly = false }: { readOnly?: boolean }) 
       .doc-number-row { font-weight: 700; color: #374151; font-size: 12px; margin-bottom: 6px; text-align: ${isAr ? 'left' : 'right'}; }
     `
 
-    const headerHtml = letterheadTop
-      ? `<div style="width:100%;height:20mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${letterheadTop}" style="max-width:100%;max-height:100%;object-fit:contain;"/></div>`
-      : `<div style="width:100%;height:20mm;overflow:hidden;padding:0 10mm;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;direction:rtl;font-family:Arial,sans-serif;">
+    const headerFallbackHtml = `<div style="width:100%;padding:0 10mm;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;direction:rtl;font-family:Arial,sans-serif;">
           <div style="font-size:9px;font-weight:bold;color:#1e40af;text-align:right;line-height:1.5;max-width:220px;">شركة سانيا الدولية<br/>للتجارة والمقاولات العامة والاستثمارات<br/>الصناعية والعقارية وصناعة الزجاج<br/>المحدودة المسؤولية<br/>رأسمالها (5000000000) مليار دينار</div>
           <div style="font-size:8px;font-weight:bold;color:#1e40af;text-align:left;line-height:1.4;max-width:220px;direction:ltr;">Sanya International Com.<br/>For Trading & General Contracting, Industrial<br/>& Real Estate Investments & Glass Industry<br/>Limited Liability<br/>Capital (5000000000) Milyard Dinar</div>
         </div>`
-    const footerHtml = letterheadBottom
-      ? `<div style="width:100%;height:16mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${letterheadBottom}" style="max-width:100%;max-height:100%;object-fit:contain;"/></div>`
-      : `<div style="width:100%;height:16mm;overflow:hidden;text-align:center;font-size:9px;color:#6b7280;font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:center;">${isAr ? 'العراق - بغداد' : 'Iraq - Baghdad'}</div>`
+    const footerFallbackHtml = `<div style="width:100%;padding:0 10mm;box-sizing:border-box;text-align:center;font-size:9px;color:#6b7280;font-family:Arial,sans-serif;">${isAr ? 'العراق - بغداد' : 'Iraq - Baghdad'}</div>`
 
     const mainHtml = `
       <div class="doc-date">${isAr ? 'التاريخ' : 'Date'}: ${content.date}</div>
@@ -360,10 +356,11 @@ export default function Documents({ readOnly = false }: { readOnly?: boolean }) 
       </div>
       <div class="doc-number-row">${content.number}</div>
     `
-    const bodyHtml = `<div style="display:flex;flex-direction:column;min-height:252mm;"><div>${mainHtml}</div><div style="flex:1"></div><div>${trailingHtml}</div></div>`
-
     await generatePdf({
-      bodyHtml, styleCss, headerHtml, footerHtml, landscape: false,
+      contentHtml: mainHtml, signatureHtml: trailingHtml, styleCss,
+      headerImageUrl: letterheadTop || undefined, headerFallbackHtml,
+      footerImageUrl: letterheadBottom || undefined, footerFallbackHtml,
+      landscape: false,
       filename: `${content.subject} - ${content.number}.pdf`
     })
   }

@@ -453,12 +453,6 @@ export default function Attendance({ readOnly = false, userRole = '' }: { readOn
     .signature-person { font-size: 12px; color: #6b7280; margin-top: 2px; }
   `
 
-  function letterheadHeaderFooter() {
-    const headerHtml = letterheadTop ? `<div style="width:100%;height:20mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${letterheadTop}" style="max-width:100%;max-height:100%;object-fit:contain;"/></div>` : ''
-    const footerHtml = letterheadBottom ? `<div style="width:100%;height:16mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${letterheadBottom}" style="max-width:100%;max-height:100%;object-fit:contain;"/></div>` : ''
-    return { headerHtml, footerHtml }
-  }
-
   function signatureBoxHtml(role: string, label: string) {
     const a = approvals[role]
     return `
@@ -471,7 +465,6 @@ export default function Attendance({ readOnly = false, userRole = '' }: { readOn
   }
 
   async function handlePrintMonthly() {
-    const { headerHtml, footerHtml } = letterheadHeaderFooter()
     const tableRows = filteredMonthlySummary.map(row => `
       <tr>${displayedColumns.map(c => `<td class="${c.printClassName || ''}">${esc(c.format ? c.format(row) : row[c.key])}</td>`).join('')}</tr>
     `).join('')
@@ -493,9 +486,10 @@ export default function Attendance({ readOnly = false, userRole = '' }: { readOn
       </div>
       <div class="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — ${new Date().toLocaleDateString('ar-IQ')}</div>
     `
-    const bodyHtml = `<div style="display:flex;flex-direction:column;min-height:165mm;"><div>${contentHtml}</div><div style="flex:1"></div><div>${signaturesHtml}</div></div>`
     await generatePdf({
-      bodyHtml, styleCss: reportStyleCss, headerHtml, footerHtml, landscape: true,
+      contentHtml, signatureHtml: signaturesHtml, styleCss: reportStyleCss,
+      headerImageUrl: letterheadTop || undefined, footerImageUrl: letterheadBottom || undefined,
+      landscape: true,
       filename: `الموقف الشهري - ${selectedMonths.map(monthLabel).join('-')}.pdf`
     })
   }
@@ -504,7 +498,6 @@ export default function Attendance({ readOnly = false, userRole = '' }: { readOn
     const empId = selectedEmployeeIds[0]
     const details = dailyDetails[empId]
     if (!details) return
-    const { headerHtml, footerHtml } = letterheadHeaderFooter()
     const empName = employees.find(e => e.id === empId)?.name || ''
     const rowsHtml = details.map(d => `
       <tr><td>${d.record_date}</td><td>${esc(d.status)}</td><td>${d.check_in || '—'}</td><td>${d.check_out || '—'}</td><td>${esc(d.notes) || '—'}</td></tr>
@@ -527,9 +520,10 @@ export default function Attendance({ readOnly = false, userRole = '' }: { readOn
       </div>
       <div class="footer">تم إنشاء هذا التقرير بواسطة منصة Sanya International Company — ${new Date().toLocaleDateString('ar-IQ')}</div>
     `
-    const bodyHtml = `<div style="display:flex;flex-direction:column;min-height:252mm;"><div>${contentHtml}</div><div style="flex:1"></div><div>${signaturesHtml}</div></div>`
     await generatePdf({
-      bodyHtml, styleCss: reportStyleCss, headerHtml, footerHtml, landscape: false,
+      contentHtml, signatureHtml: signaturesHtml, styleCss: reportStyleCss,
+      headerImageUrl: letterheadTop || undefined, footerImageUrl: letterheadBottom || undefined,
+      landscape: false,
       filename: `تقرير مفصل - ${empName}.pdf`
     })
   }
