@@ -9,13 +9,13 @@
 - Supabase: قاعدة بيانات Postgres + Auth + Storage (مفتاح anon مكتوب مباشرة داخل كل مكوّن — لا تغيّره)
 - النشر: Vercel تلقائياً عند `git push` إلى GitHub (SANYAINTERNATIONALCO/company-platform)
 - تطبيق أندرويد: Capacitor يفتح الموقع المباشر (مجلد android/)
-- مكتبات: recharts (رسوم بيانية)، xlsx (تصدير Excel)، Puppeteer (توليد PDF بالسيرفر — `puppeteer` محلياً، `puppeteer-core`+`@sparticuz/chromium` على Vercel)
+- مكتبات: recharts (رسوم بيانية)، xlsx (تصدير Excel)، Puppeteer (توليد PDF بالسيرفر — `puppeteer` محلياً، `puppeteer-core`+`@sparticuz/chromium` على Vercel)، `image-size` (أبعاد صور الترويسة)، `pdf-lib` (عدّ صفحات الـPDF الفعلي لتموضع التوقيعات)
 
 ## بنية المشروع
 - `app/page.tsx` — تسجيل الدخول، الشريط الجانبي (مجموعات: الموارد البشرية/المالية/الإدارة/النظام)، لوحة المعلومات، تحميل الدور، عرض الأقسام
 - `app/components/` — 13 قسماً مستقلاً: Employees, Attendance, Payroll, Documents, Custody, Contracts, Overtime, Finance, Receipts, Visa (يشمل دورات المغادرة والعودة), Tasks, Reports, ActivityLog
 - `app/logActivity.ts` — دالة مشتركة لسجل النشاطات
-- `app/pdfPrint.ts` + `app/api/pdf/route.ts` — توليد PDF حقيقي بالسيرفر (Puppeteer) بدل `window.print()`، مستخدم بـAttendance.tsx وDocuments.tsx وPayroll.tsx فقط (Finance.tsx وReceipts.tsx يبقيان على `window.print()`). `generatePdf()` يفصل الترويسة العلوية/السفلية كـheader/footer templates تتكرر بكل صفحة PDF، ومحتوى الصفحة يُغلَّف بـflex + min-height بوحدة mm حتى تلتصق التوقيعات بأسفل الصفحة بالحالة أحادية الصفحة
+- `app/pdfPrint.ts` + `app/api/pdf/route.ts` — توليد PDF حقيقي بالسيرفر (Puppeteer، يرسم HTML/CSS حقيقي — **ليس jsPDF إطلاقاً**) بدل `window.print()`، مستخدم بـAttendance.tsx (الموقف الشهري + التقرير المفصل) وDocuments.tsx وPayroll.tsx فقط (Finance.tsx وReceipts.tsx يبقيان على `window.print()` عمداً). الأقسام ترسل `headerImageUrl`/`footerImageUrl` (روابط الترويسة الخام من `document_assets`) بدل HTML جاهز؛ السيرفر يحسب أبعاد الصورة الحقيقية (`image-size`) ويحوّلها base64 مضمّن (Puppeteer header/footer templates ما تنتظر تحميل صور خارجية) لتمتد بعرض الصفحة بنفس نسبتها الأصلية، بسقف أمان (40mm/30mm) يمنع صورة بنسبة غريبة من تعطيل التوليد. خط Cairo مضمّن base64 أيضاً (لا يُجلب من Google Fonts وقت التوليد) لضمان نتيجة قياس متطابقة دائماً. **تموضع التوقيعات:** السيرفر يولّد الجدول لوحده أولاً ليعرف عدد صفحاته الحقيقي (عبر `pdf-lib`)، ثم يقارنه بعدد صفحات (الجدول+التوقيع) بدون أي إجبار — إذا تساويا يُستخدم الناتج كما هو، وإذا احتاج التوقيع صفحة زائدة فقط عندها يُدفع لصفحة جديدة كاملة ويُثبّت بأسفلها (`page-break-before` + `flex`/`min-height`)
 - كل مكوّن ينشئ عميل supabase خاصاً به، وستايلات inline (لا يوجد CSS framework)
 
 ## قواعد حرجة — لا تخالفها أبداً
@@ -27,6 +27,7 @@
 4. سجّل العمليات الحساسة عبر `logActivity(action, section, details)`: كل حذف، تعديل مالي، أرشفة/حذف رواتب، توقيعات، إصدار/حذف كتب، تسجيل دخول
 5. أعمدة view العرض الشهري `monthly_attendance_summary` بأسماء عربية — طابقها حرفياً (لاحظ: لا يوجد بها عمود "إجازة وفاة" فعلياً رغم وجود هذه الحالة كحضور — لا تفترض عموداً غير موجود)
 6. كل واجهة جديدة: عربية RTL بنفس نمط البطاقات/الألوان الموجود
+7. عند تعديل `app/api/pdf/route.ts`: لا تُرجع نص زخرفي صغير (مثل "تم إنشاء بواسطة...") داخل `signatureHtml` مباشرة بعد صندوق التوقيع — ولو ببضع بكسلات، جُرّب سابقاً وكان يكفي لدفع كامل التوقيع لصفحة PDF زائدة فارغة تقريباً. `next.config.ts` يحتاج `outputFileTracingIncludes` صريح لمجلد `@sparticuz/chromium/bin` وإلا يفشل التوليد على Vercel بخطأ "input directory does not exist" (تتبّع الملفات بـNext ما يلتقط أصول الحزمة المحمّلة ديناميكياً تلقائياً)
 
 ## الأدوار والصلاحيات
 - `editor` (حسن): كل شيء
