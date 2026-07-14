@@ -124,8 +124,11 @@ export async function POST(req: NextRequest) {
     await page.setContent(html, { waitUntil: 'load' })
     await page.evaluate(() => document.fonts.ready)
 
-    // نقيس ارتفاع المحتوى الفعلي، ونقرر: هل تلتصق التوقيعات بأسفل نفس الصفحة،
-    // أم يجب دفعها لصفحة جديدة كاملة لأن المحتوى تجاوز مساحة الصفحة الواحدة
+    // نقيس ارتفاع المحتوى الفعلي، ونقرر: هل تلتصق التوقيعات بأسفل الصفحة التي
+    // ينتهي فيها المحتوى (سواء كانت الصفحة الوحيدة أو آخر صفحة من جدول متعدد
+    // الصفحات)، أم يجب دفعها لصفحة جديدة لأن آخر صفحة يشغلها المحتوى ما فيها
+    // مساحة كافية. نحسب "الباقي على آخر صفحة" بباقي القسمة بدل افتراض صفحة واحدة فقط،
+    // حتى لا تُدفع التوقيعات لصفحة إضافية فارغة رغم وجود مساحة كافية بآخر صفحة فعلية
     await page.evaluate((availableHeightPx: number) => {
       const contentEl = document.getElementById('pdf-content')
       const sigWrap = document.getElementById('pdf-sig-wrap')
@@ -133,8 +136,9 @@ export async function POST(req: NextRequest) {
       if (!contentEl || !sigWrap || !sigBlock) return
       const contentHeight = contentEl.getBoundingClientRect().height
       const sigHeight = sigBlock.getBoundingClientRect().height
-      const remaining = availableHeightPx - contentHeight
-      if (remaining >= sigHeight + 5) {
+      const usedOnLastPage = contentHeight % availableHeightPx
+      const remaining = availableHeightPx - (usedOnLastPage === 0 ? 0 : usedOnLastPage)
+      if (remaining >= sigHeight + 10) {
         sigWrap.style.minHeight = remaining + 'px'
       } else {
         sigWrap.style.pageBreakBefore = 'always'
