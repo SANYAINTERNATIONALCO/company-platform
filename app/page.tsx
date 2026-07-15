@@ -16,6 +16,7 @@ import Overtime from './components/Overtime'
 import Reports from './components/Reports'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { logActivity } from './logActivity'
+import { Button, Input, Badge } from './ui'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -310,47 +311,55 @@ export default function Home() {
 
   // صفحة تسجيل الدخول
   if (!user) return (
-    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg, #0f2557 0%, #1e40af 50%, #2563eb 100%)',fontFamily:'system-ui',direction:'rtl',padding:20}}>
-      <div style={{background:'#fff',borderRadius:20,padding:'2.5rem',width:380,maxWidth:'100%',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
-        <div style={{textAlign:'center',marginBottom:28}}>
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg, var(--color-sidebar-bg) 0%, var(--color-accent) 50%, var(--blue-600) 100%)',fontFamily:'var(--font-sans)',direction:'rtl',padding:20}}>
+      <div style={{background:'var(--color-surface)',borderRadius:'var(--radius-xl)',padding:'2.5rem',width:380,maxWidth:'100%',boxShadow:'var(--shadow-lg)'}}>
+        <div style={{textAlign:'center',marginBottom:'var(--space-6)'}}>
           <img src={LOGO_URL} alt="Sanya International Company"
-            style={{width:140,height:140,objectFit:'contain',marginBottom:8}}
+            style={{width:140,height:140,objectFit:'contain',marginBottom:'var(--space-2)'}}
             onError={(e)=>{ (e.target as HTMLImageElement).style.display='none' }}/>
-          <h1 style={{margin:'0 0 4px',fontSize:22,fontWeight:700,color:'#111827'}}>منصة الشركة</h1>
-          <p style={{margin:0,color:'#6b7280',fontSize:14}}>Sanya International Company</p>
+          <h1 style={{margin:'0 0 4px',fontSize:'var(--text-2xl)',fontWeight:'var(--weight-bold)',color:'var(--color-text)'}}>منصة الشركة</h1>
+          <p style={{margin:0,color:'var(--color-text-muted)',fontSize:'var(--text-base)'}}>Sanya International Company</p>
         </div>
-        {error && <div style={{background:'#fef2f2',color:'#dc2626',padding:'10px 14px',borderRadius:8,marginBottom:16,fontSize:13,border:'1px solid #fca5a5'}}>{error}</div>}
-        <div style={{marginBottom:12}}>
-          <label style={{display:'block',marginBottom:6,fontSize:13,fontWeight:600,color:'#374151'}}>البريد الإلكتروني</label>
-          <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()}
-            style={{width:'100%',padding:'11px 14px',borderRadius:10,border:'2px solid #e5e7eb',fontSize:14,boxSizing:'border-box',direction:'ltr',color:'#111827',outline:'none'}}/>
+        {error && <div style={{background:'var(--color-danger-surface-subtle)',color:'var(--color-danger)',padding:'10px 14px',borderRadius:'var(--radius-md)',marginBottom:'var(--space-4)',fontSize:'var(--text-sm)',border:'var(--border-width-thin) solid var(--color-danger-border)'}}>{error}</div>}
+        <div style={{marginBottom:'var(--space-3)'}}>
+          <Input
+            label="البريد الإلكتروني"
+            value={email}
+            onChange={e=>setEmail(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&login()}
+            style={{direction:'ltr'}}
+          />
         </div>
-        <div style={{marginBottom:24}}>
-          <label style={{display:'block',marginBottom:6,fontSize:13,fontWeight:600,color:'#374151'}}>كلمة المرور</label>
-          <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()}
-            style={{width:'100%',padding:'11px 14px',borderRadius:10,border:'2px solid #e5e7eb',fontSize:14,boxSizing:'border-box',direction:'ltr',color:'#111827',outline:'none'}}/>
+        <div style={{marginBottom:'var(--space-6)'}}>
+          <Input
+            label="كلمة المرور"
+            type="password"
+            value={password}
+            onChange={e=>setPassword(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&login()}
+            style={{direction:'ltr'}}
+          />
         </div>
-        <button onClick={login} disabled={loading}
-          style={{width:'100%',padding:'13px',borderRadius:10,background:'linear-gradient(135deg,#1e40af,#3b82f6)',color:'#fff',border:'none',fontSize:15,fontWeight:700,cursor:'pointer',boxShadow:'0 4px 12px rgba(30,64,175,0.4)'}}>
+        <Button variant="primary" size="lg" onClick={login} disabled={loading} style={{ width: '100%' }}>
           {loading ? 'جارٍ الدخول...' : 'تسجيل الدخول'}
-        </button>
+        </Button>
       </div>
     </div>
   )
 
   if (!userRole) return (
-    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#f0f4f8'}}>
-      <div style={{color:'#6b7280',fontSize:15}}>جارٍ تحميل الصلاحيات...</div>
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--color-canvas)'}}>
+      <div style={{color:'var(--color-text-muted)',fontSize:'var(--text-md)'}}>جارٍ تحميل الصلاحيات...</div>
     </div>
   )
 
   const sidebarWidth = sidebarCollapsed ? 72 : 240
 
   return (
-    <div style={{minHeight:'100vh',background:'#f0f4f8',fontFamily:'system-ui',direction:'rtl',display:'flex'}}>
+    <div style={{minHeight:'100vh',background:'var(--color-canvas)',fontFamily:'var(--font-sans)',direction:'rtl',display:'flex'}}>
 
       {/* الشريط الجانبي */}
-      <aside style={{width:sidebarWidth,minWidth:sidebarWidth,background:'#0f2557',display:'flex',flexDirection:'column',position:'sticky',top:0,height:'100vh',transition:'width 0.2s, min-width 0.2s',boxShadow:'2px 0 10px rgba(0,0,0,0.15)'}}>
+      <aside style={{width:sidebarWidth,minWidth:sidebarWidth,background:'var(--color-sidebar-bg)',display:'flex',flexDirection:'column',position:'sticky',top:0,height:'100vh',transition:'width var(--duration-base) var(--ease-standard), min-width var(--duration-base) var(--ease-standard)',boxShadow:'var(--shadow-md)'}}>
 
         {/* شعار الشركة */}
         <div style={{padding:sidebarCollapsed?'16px 0':'20px 16px',display:'flex',alignItems:'center',gap:10,justifyContent:sidebarCollapsed?'center':'flex-start',borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
@@ -358,8 +367,8 @@ export default function Home() {
             onError={(e)=>{ (e.target as HTMLImageElement).style.display='none' }}/>
           {!sidebarCollapsed && (
             <div>
-              <div style={{fontWeight:700,fontSize:13,color:'#fff',lineHeight:1.3}}>Sanya International</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.5)'}}>منصة إدارة الشركة</div>
+              <div style={{fontWeight:'var(--weight-bold)',fontSize:'var(--text-sm)',color:'var(--color-text-on-dark)',lineHeight:'var(--leading-tight)'}}>Sanya International</div>
+              <div style={{fontSize:'var(--text-2xs)',color:'rgba(255,255,255,0.5)'}}>منصة إدارة الشركة</div>
             </div>
           )}
         </div>
@@ -372,7 +381,7 @@ export default function Home() {
             return (
               <div key={gi} style={{marginBottom:14}}>
                 {group.title && !sidebarCollapsed && (
-                  <div style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.35)',padding:'0 12px',marginBottom:6,letterSpacing:1}}>{group.title}</div>
+                  <div style={{fontSize:'var(--text-2xs)',fontWeight:'var(--weight-bold)',color:'rgba(255,255,255,0.35)',padding:'0 12px',marginBottom:6,letterSpacing:'var(--tracking-wide)'}}>{group.title}</div>
                 )}
                 {group.title && sidebarCollapsed && (
                   <div style={{height:1,background:'rgba(255,255,255,0.1)',margin:'8px 12px'}}></div>
@@ -386,15 +395,15 @@ export default function Home() {
                         width:'100%',display:'flex',alignItems:'center',gap:12,padding:sidebarCollapsed?'11px 0':'10px 12px',
                         justifyContent:sidebarCollapsed?'center':'flex-start',
                         background:isActive?'rgba(255,255,255,0.14)':'transparent',
-                        border:'none',borderRadius:9,cursor:'pointer',marginBottom:2,
-                        color:isActive?'#fff':'rgba(255,255,255,0.65)',
-                        fontSize:13.5,fontWeight:isActive?700:500,
-                        position:'relative',transition:'background 0.15s, color 0.15s'
+                        border:'none',borderRadius:'var(--radius-md)',cursor:'pointer',marginBottom:2,
+                        color:isActive?'var(--color-text-on-dark)':'rgba(255,255,255,0.65)',
+                        fontSize:13.5,fontWeight:isActive?'var(--weight-bold)':'var(--weight-medium)',
+                        position:'relative',transition:'background var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard)'
                       }}>
                       {iconSvg(item.icon, isActive ? '#fff' : 'rgba(255,255,255,0.65)')}
                       {!sidebarCollapsed && <span>{item.label}</span>}
                       {badge && (
-                        <span style={{position:sidebarCollapsed?'absolute':'static',top:4,left:8,marginRight:sidebarCollapsed?0:'auto',background:'#dc2626',color:'#fff',borderRadius:20,padding:'1px 7px',fontSize:10,fontWeight:700}}>
+                        <span style={{position:sidebarCollapsed?'absolute':'static',top:4,insetInlineStart:8,marginInlineStart:sidebarCollapsed?0:'auto',background:'var(--color-danger)',color:'var(--color-text-on-accent)',borderRadius:'var(--radius-full)',padding:'1px 7px',fontSize:'var(--text-2xs)',fontWeight:'var(--weight-bold)'}}>
                           {badge}
                         </span>
                       )}
@@ -410,15 +419,15 @@ export default function Home() {
         <div style={{padding:'12px 8px',borderTop:'1px solid rgba(255,255,255,0.1)'}}>
           <button onClick={()=>setSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? 'توسيع القائمة' : 'طي القائمة'}
             style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:sidebarCollapsed?'10px 0':'9px 12px',justifyContent:sidebarCollapsed?'center':'flex-start',
-              background:'transparent',border:'none',borderRadius:9,cursor:'pointer',color:'rgba(255,255,255,0.55)',fontSize:13,marginBottom:4}}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{transform:sidebarCollapsed?'rotate(180deg)':'none',transition:'transform 0.2s'}}>
+              background:'transparent',border:'none',borderRadius:'var(--radius-md)',cursor:'pointer',color:'rgba(255,255,255,0.55)',fontSize:'var(--text-sm)',marginBottom:4}}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{transform:sidebarCollapsed?'rotate(180deg)':'none',transition:'transform var(--duration-base) var(--ease-standard)'}}>
               <path d="M13 5l7 7-7 7M4 5l7 7-7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
             {!sidebarCollapsed && <span>طي القائمة</span>}
           </button>
           <button onClick={logout} title="خروج"
             style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:sidebarCollapsed?'10px 0':'9px 12px',justifyContent:sidebarCollapsed?'center':'flex-start',
-              background:'transparent',border:'none',borderRadius:9,cursor:'pointer',color:'rgba(255,255,255,0.55)',fontSize:13}}>
+              background:'transparent',border:'none',borderRadius:'var(--radius-md)',cursor:'pointer',color:'rgba(255,255,255,0.55)',fontSize:'var(--text-sm)'}}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path d="M15 3h4a1 1 0 011 1v16a1 1 0 01-1 1h-4M10 17l5-5-5-5M15 12H3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -431,15 +440,13 @@ export default function Home() {
       <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column'}}>
 
         {/* الشريط العلوي */}
-        <div style={{background:'#fff',padding:'0 24px',display:'flex',alignItems:'center',justifyContent:'space-between',height:58,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',position:'sticky',top:0,zIndex:10}}>
-          <h1 style={{margin:0,fontSize:17,fontWeight:700,color:'#111827'}}>{sectionTitles[activeSection] || ''}</h1>
+        <div style={{background:'var(--color-surface)',padding:'0 24px',display:'flex',alignItems:'center',justifyContent:'space-between',height:58,boxShadow:'var(--shadow-xs)',position:'sticky',top:0,zIndex:10 /* var(--z-sticky) */}}>
+          <h1 style={{margin:0,fontSize:'var(--text-lg)',fontWeight:'var(--weight-bold)',color:'var(--color-text)'}}>{sectionTitles[activeSection] || ''}</h1>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <div style={{textAlign:'left'}}>
-              <div style={{fontSize:12,fontWeight:600,color:'#374151',direction:'ltr'}}>{user.email}</div>
+              <div style={{fontSize:'var(--text-xs)',fontWeight:'var(--weight-semibold)',color:'var(--color-text-secondary)',direction:'ltr'}}>{user.email}</div>
             </div>
-            <span style={{fontSize:11,background:'#eff6ff',padding:'4px 12px',borderRadius:20,color:'#1d4ed8',fontWeight:700,border:'1px solid #bfdbfe'}}>
-              {roleLabel[userRole] || userRole}
-            </span>
+            <Badge tone="accent">{roleLabel[userRole] || userRole}</Badge>
           </div>
         </div>
 
@@ -449,42 +456,42 @@ export default function Home() {
           {/* لوحة المعلومات */}
           {activeSection === 'dashboard' && (
             <div style={{padding:'28px 24px',maxWidth:1100,margin:'0 auto'}}>
-              <div style={{marginBottom:24}}>
-                <h2 style={{margin:'0 0 4px',fontSize:22,fontWeight:700,color:'#0f2557'}}>مرحباً بك 👋</h2>
-                <p style={{margin:0,fontSize:13,color:'#6b7280'}}>نظرة عامة سريعة على المنصة — {new Date().toLocaleDateString('ar-IQ', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
+              <div style={{marginBottom:'var(--space-6)'}}>
+                <h2 style={{margin:'0 0 4px',fontSize:'var(--text-xl)',fontWeight:'var(--weight-bold)',color:'var(--color-sidebar-bg)'}}>مرحباً بك 👋</h2>
+                <p style={{margin:0,fontSize:'var(--text-sm)',color:'var(--color-text-muted)'}}>نظرة عامة سريعة على المنصة — {new Date().toLocaleDateString('ar-IQ', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
               </div>
 
               {/* بطاقات إحصائية سريعة */}
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:16,marginBottom:28}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:16,marginBottom:'var(--space-8)'}}>
                 {userRole !== 'accountant' && (
-                  <button onClick={()=>setActiveSection('employees')} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:14,padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'0 1px 3px rgba(0,0,0,0.05)',display:'flex',alignItems:'center',gap:14}}>
-                    <div style={{background:'#ede9fe',borderRadius:12,width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('EMP','#7c3aed',24)}</div>
+                  <button onClick={()=>setActiveSection('employees')} style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-lg)',padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'var(--shadow-xs)',display:'flex',alignItems:'center',gap:14}}>
+                    <div style={{background:'var(--color-info-surface)',borderRadius:'var(--radius-md)',width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('EMP','#7c3aed',24)}</div>
                     <div>
-                      <div style={{fontSize:24,fontWeight:700,color:'#111827'}}>{dashStats.employees}</div>
-                      <div style={{fontSize:12,color:'#6b7280'}}>موظف نشط</div>
+                      <div style={{fontSize:'var(--text-2xl)',fontWeight:'var(--weight-bold)',color:'var(--color-text)',fontVariantNumeric:'tabular-nums'}}>{dashStats.employees}</div>
+                      <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>موظف نشط</div>
                     </div>
                   </button>
                 )}
-                <button onClick={()=>setActiveSection('tasks')} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:14,padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'0 1px 3px rgba(0,0,0,0.05)',display:'flex',alignItems:'center',gap:14}}>
-                  <div style={{background:'#fee2e2',borderRadius:12,width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('TASK','#dc2626',24)}</div>
+                <button onClick={()=>setActiveSection('tasks')} style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-lg)',padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'var(--shadow-xs)',display:'flex',alignItems:'center',gap:14}}>
+                  <div style={{background:'var(--color-danger-surface)',borderRadius:'var(--radius-md)',width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('TASK','#dc2626',24)}</div>
                   <div>
-                    <div style={{fontSize:24,fontWeight:700,color:'#111827'}}>{dashStats.myPendingTasks}</div>
-                    <div style={{fontSize:12,color:'#6b7280'}}>مهمة غير مكتملة لديك</div>
+                    <div style={{fontSize:'var(--text-2xl)',fontWeight:'var(--weight-bold)',color:'var(--color-text)',fontVariantNumeric:'tabular-nums'}}>{dashStats.myPendingTasks}</div>
+                    <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>مهمة غير مكتملة لديك</div>
                   </div>
                 </button>
-                <button onClick={()=>setActiveSection('finance')} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:14,padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'0 1px 3px rgba(0,0,0,0.05)',display:'flex',alignItems:'center',gap:14}}>
-                  <div style={{background:dashStats.lowFunds>0?'#fef9c3':'#dcfce7',borderRadius:12,width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('FIN',dashStats.lowFunds>0?'#b45309':'#15803d',24)}</div>
+                <button onClick={()=>setActiveSection('finance')} style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-lg)',padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'var(--shadow-xs)',display:'flex',alignItems:'center',gap:14}}>
+                  <div style={{background:dashStats.lowFunds>0?'var(--color-warning-surface)':'var(--color-success-surface)',borderRadius:'var(--radius-md)',width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('FIN',dashStats.lowFunds>0?'#b45309':'#15803d',24)}</div>
                   <div>
-                    <div style={{fontSize:24,fontWeight:700,color:dashStats.lowFunds>0?'#b45309':'#111827'}}>{dashStats.lowFunds}</div>
-                    <div style={{fontSize:12,color:'#6b7280'}}>سلفة منخفضة الرصيد</div>
+                    <div style={{fontSize:'var(--text-2xl)',fontWeight:'var(--weight-bold)',color:dashStats.lowFunds>0?'var(--color-warning)':'var(--color-text)',fontVariantNumeric:'tabular-nums'}}>{dashStats.lowFunds}</div>
+                    <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>سلفة منخفضة الرصيد</div>
                   </div>
                 </button>
                 {(userRole === 'editor' || userRole === 'admin') && (
-                  <button onClick={()=>setActiveSection('visa')} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:14,padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'0 1px 3px rgba(0,0,0,0.05)',display:'flex',alignItems:'center',gap:14}}>
-                    <div style={{background:(visaAlerts.touristViolated+visaAlerts.annualViolated)>0?'#fee2e2':'#fef9c3',borderRadius:12,width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('VISA',(visaAlerts.touristViolated+visaAlerts.annualViolated)>0?'#dc2626':'#b45309',24)}</div>
+                  <button onClick={()=>setActiveSection('visa')} style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-lg)',padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'var(--shadow-xs)',display:'flex',alignItems:'center',gap:14}}>
+                    <div style={{background:(visaAlerts.touristViolated+visaAlerts.annualViolated)>0?'var(--color-danger-surface)':'var(--color-warning-surface)',borderRadius:'var(--radius-md)',width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('VISA',(visaAlerts.touristViolated+visaAlerts.annualViolated)>0?'#dc2626':'#b45309',24)}</div>
                     <div>
-                      <div style={{fontSize:24,fontWeight:700,color:(visaAlerts.touristViolated+visaAlerts.annualViolated)>0?'#dc2626':'#111827'}}>{visaAlerts.touristViolated+visaAlerts.annualViolated}</div>
-                      <div style={{fontSize:12,color:'#6b7280'}}>مخالف تأشيرة</div>
+                      <div style={{fontSize:'var(--text-2xl)',fontWeight:'var(--weight-bold)',color:(visaAlerts.touristViolated+visaAlerts.annualViolated)>0?'var(--color-danger)':'var(--color-text)',fontVariantNumeric:'tabular-nums'}}>{visaAlerts.touristViolated+visaAlerts.annualViolated}</div>
+                      <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>مخالف تأشيرة</div>
                     </div>
                   </button>
                 )}
@@ -492,20 +499,20 @@ export default function Home() {
 
               {/* تنبيهات المهام */}
               {(taskAlerts.unseen > 0 || taskAlerts.overdue > 0) && (
-                <div style={{background:'#fff',border:'1px solid #bfdbfe',borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                <div style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-accent-border)',borderRadius:'var(--radius-xl)',padding:'20px 24px',marginBottom:'var(--space-5)',boxShadow:'var(--shadow-xs)'}}>
                   <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
-                    <span style={{width:10,height:10,borderRadius:'50%',background:'#2563eb',display:'inline-block'}}></span>
-                    <h2 style={{margin:0,fontSize:15,fontWeight:700,color:'#111827'}}>تنبيهات المهام</h2>
+                    <span style={{width:10,height:10,borderRadius:'var(--radius-full)',background:'var(--blue-600)',display:'inline-block'}}></span>
+                    <h2 style={{margin:0,fontSize:'var(--text-md)',fontWeight:'var(--weight-bold)',color:'var(--color-text)'}}>تنبيهات المهام</h2>
                   </div>
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
                     {taskAlerts.unseen > 0 && (
-                      <button onClick={()=>setActiveSection('tasks')} style={{textAlign:'right',background:'#eff6ff',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                        <div style={{fontSize:13,color:'#1d4ed8',fontWeight:700}}>{taskAlerts.unseen} مهمة جديدة لم تُفتح بعد</div>
+                      <button onClick={()=>setActiveSection('tasks')} style={{textAlign:'right',background:'var(--color-accent-subtle)',border:'none',borderRadius:'var(--radius-md)',padding:'12px 16px',cursor:'pointer'}}>
+                        <div style={{fontSize:'var(--text-sm)',color:'var(--color-accent-hover)',fontWeight:'var(--weight-bold)'}}>{taskAlerts.unseen} مهمة جديدة لم تُفتح بعد</div>
                       </button>
                     )}
                     {taskAlerts.overdue > 0 && (
-                      <button onClick={()=>setActiveSection('tasks')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                        <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{taskAlerts.overdue} مهمة متأخرة عن تاريخ الاستحقاق</div>
+                      <button onClick={()=>setActiveSection('tasks')} style={{textAlign:'right',background:'var(--color-danger-surface)',border:'none',borderRadius:'var(--radius-md)',padding:'12px 16px',cursor:'pointer'}}>
+                        <div style={{fontSize:'var(--text-sm)',color:'var(--color-danger)',fontWeight:'var(--weight-bold)'}}>{taskAlerts.overdue} مهمة متأخرة عن تاريخ الاستحقاق</div>
                       </button>
                     )}
                   </div>
@@ -518,30 +525,30 @@ export default function Home() {
                 const totalWarning = visaAlerts.touristWarning + visaAlerts.annualWarning
                 if (totalViolated === 0 && totalWarning === 0) return null
                 return (
-                  <div style={{background:'#fff',border:'1px solid #fecaca',borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                  <div style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-danger-border)',borderRadius:'var(--radius-xl)',padding:'20px 24px',marginBottom:'var(--space-5)',boxShadow:'var(--shadow-xs)'}}>
                     <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
-                      <span style={{width:10,height:10,borderRadius:'50%',background:'#dc2626',display:'inline-block'}}></span>
-                      <h2 style={{margin:0,fontSize:15,fontWeight:700,color:'#111827'}}>تنبيهات التأشيرات</h2>
+                      <span style={{width:10,height:10,borderRadius:'var(--radius-full)',background:'var(--color-danger)',display:'inline-block'}}></span>
+                      <h2 style={{margin:0,fontSize:'var(--text-md)',fontWeight:'var(--weight-bold)',color:'var(--color-text)'}}>تنبيهات التأشيرات</h2>
                     </div>
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
                       {visaAlerts.touristViolated > 0 && (
-                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                          <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{visaAlerts.touristViolated} مخالف — تأشيرة سياحية منتهية</div>
+                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'var(--color-danger-surface)',border:'none',borderRadius:'var(--radius-md)',padding:'12px 16px',cursor:'pointer'}}>
+                          <div style={{fontSize:'var(--text-sm)',color:'var(--color-danger)',fontWeight:'var(--weight-bold)'}}>{visaAlerts.touristViolated} مخالف — تأشيرة سياحية منتهية</div>
                         </button>
                       )}
                       {visaAlerts.touristWarning > 0 && (
-                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fef9c3',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                          <div style={{fontSize:13,color:'#b45309',fontWeight:700}}>{visaAlerts.touristWarning} تأشيرة سياحية تنتهي قريباً (أقل من 7 أيام)</div>
+                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'var(--color-warning-surface)',border:'none',borderRadius:'var(--radius-md)',padding:'12px 16px',cursor:'pointer'}}>
+                          <div style={{fontSize:'var(--text-sm)',color:'var(--color-warning)',fontWeight:'var(--weight-bold)'}}>{visaAlerts.touristWarning} تأشيرة سياحية تنتهي قريباً (أقل من 7 أيام)</div>
                         </button>
                       )}
                       {visaAlerts.annualViolated > 0 && (
-                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fee2e2',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                          <div style={{fontSize:13,color:'#dc2626',fontWeight:700}}>{visaAlerts.annualViolated} مخالف — تأشيرة سنوية منتهية</div>
+                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'var(--color-danger-surface)',border:'none',borderRadius:'var(--radius-md)',padding:'12px 16px',cursor:'pointer'}}>
+                          <div style={{fontSize:'var(--text-sm)',color:'var(--color-danger)',fontWeight:'var(--weight-bold)'}}>{visaAlerts.annualViolated} مخالف — تأشيرة سنوية منتهية</div>
                         </button>
                       )}
                       {visaAlerts.annualWarning > 0 && (
-                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'#fef9c3',border:'none',borderRadius:10,padding:'12px 16px',cursor:'pointer'}}>
-                          <div style={{fontSize:13,color:'#b45309',fontWeight:700}}>{visaAlerts.annualWarning} تأشيرة سنوية تنتهي قريباً (أقل من 4 أشهر)</div>
+                        <button onClick={()=>setActiveSection('visa')} style={{textAlign:'right',background:'var(--color-warning-surface)',border:'none',borderRadius:'var(--radius-md)',padding:'12px 16px',cursor:'pointer'}}>
+                          <div style={{fontSize:'var(--text-sm)',color:'var(--color-warning)',fontWeight:'var(--weight-bold)'}}>{visaAlerts.annualWarning} تأشيرة سنوية تنتهي قريباً (أقل من 4 أشهر)</div>
                         </button>
                       )}
                     </div>
@@ -551,16 +558,15 @@ export default function Home() {
 
               {/* نظرة سريعة على السنة */}
               {userRole !== 'accountant' && miniChart.length > 0 && (
-                <div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                <div style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-xl)',padding:'20px 24px',marginBottom:'var(--space-5)',boxShadow:'var(--shadow-xs)'}}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:10}}>
                     <div style={{display:'flex',alignItems:'center',gap:10}}>
-                      <span style={{width:10,height:10,borderRadius:'50%',background:'#7c3aed',display:'inline-block'}}></span>
-                      <h2 style={{margin:0,fontSize:15,fontWeight:700,color:'#111827'}}>نظرة سريعة على سنة {new Date().getFullYear()}</h2>
+                      <span style={{width:10,height:10,borderRadius:'var(--radius-full)',background:'var(--color-info)',display:'inline-block'}}></span>
+                      <h2 style={{margin:0,fontSize:'var(--text-md)',fontWeight:'var(--weight-bold)',color:'var(--color-text)'}}>نظرة سريعة على سنة {new Date().getFullYear()}</h2>
                     </div>
-                    <button onClick={()=>setActiveSection('reports')}
-                      style={{background:'#ede9fe',color:'#7c3aed',border:'none',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:12,fontWeight:700}}>
+                    <Button variant="info-soft" size="sm" onClick={()=>setActiveSection('reports')}>
                       عرض التقرير الكامل ←
-                    </button>
+                    </Button>
                   </div>
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={miniChart} margin={{top:5,right:5,bottom:5,left:5}}>
@@ -595,17 +601,17 @@ export default function Home() {
           {/* قسم الحسابات: مصاريف + وصولات */}
           {activeSection === 'finance' && (
             <div>
-              <div style={{margin:'24px 24px 0',display:'flex',gap:6,background:'#e5e7eb',padding:4,borderRadius:10,width:'fit-content'}}>
+              <div style={{margin:'24px 24px 0',display:'flex',gap:6,background:'var(--color-border)',padding:4,borderRadius:'var(--radius-lg)',width:'fit-content'}}>
                 <button onClick={()=>setFinanceTab('expenses')}
-                  style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
-                    background:financeTab==='expenses'?'#fff':'transparent',color:financeTab==='expenses'?'#15803d':'#6b7280',
-                    boxShadow:financeTab==='expenses'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+                  style={{padding:'8px 20px',fontSize:'var(--text-base)',border:'none',borderRadius:'var(--radius-md)',cursor:'pointer',fontWeight:'var(--weight-semibold)',
+                    background:financeTab==='expenses'?'var(--color-surface)':'transparent',color:financeTab==='expenses'?'var(--color-success)':'var(--color-text-muted)',
+                    boxShadow:financeTab==='expenses'?'var(--shadow-xs)':'none'}}>
                   المصاريف
                 </button>
                 <button onClick={()=>setFinanceTab('receipts')}
-                  style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
-                    background:financeTab==='receipts'?'#fff':'transparent',color:financeTab==='receipts'?'#15803d':'#6b7280',
-                    boxShadow:financeTab==='receipts'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+                  style={{padding:'8px 20px',fontSize:'var(--text-base)',border:'none',borderRadius:'var(--radius-md)',cursor:'pointer',fontWeight:'var(--weight-semibold)',
+                    background:financeTab==='receipts'?'var(--color-surface)':'transparent',color:financeTab==='receipts'?'var(--color-success)':'var(--color-text-muted)',
+                    boxShadow:financeTab==='receipts'?'var(--shadow-xs)':'none'}}>
                   الوصولات
                 </button>
               </div>

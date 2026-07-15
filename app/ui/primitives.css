@@ -1,0 +1,149 @@
+/*
+ * Styling for the 5 approved UI primitives (Button, Input, Table, Badge, Card).
+ * Real CSS (not inline style) exists here for exactly one reason: inline
+ * `style={{}}` cannot express :hover/:focus-visible/:disabled, and every
+ * one of those pseudo-classes is a named gap in DESIGN_FOUNDATION.md §3.7 —
+ * this is not a parallel styling system (no utility classes, no Tailwind),
+ * it's the minimum real CSS needed to add states inline style structurally
+ * cannot provide. Every value below is a var() token — no literal color,
+ * size, or duration lives in this file.
+ */
+
+/* ---------------------------------------------------------------- Button */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-weight: var(--weight-semibold);
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-standard),
+              color var(--duration-fast) var(--ease-standard),
+              box-shadow var(--duration-fast) var(--ease-standard),
+              filter var(--duration-fast) var(--ease-standard);
+}
+.ui-btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.ui-btn:disabled { opacity: var(--opacity-disabled); cursor: not-allowed; }
+
+.ui-btn--sm { height: 28px; padding: 0 var(--space-3); font-size: var(--text-xs); }
+.ui-btn--md { height: 36px; padding: 0 var(--space-4); font-size: var(--text-sm); }
+.ui-btn--lg { height: 44px; padding: 0 var(--space-6); font-size: var(--text-base); }
+
+.ui-btn--primary { background: var(--color-accent); color: var(--color-text-on-accent); }
+.ui-btn--primary:hover:not(:disabled) { background: var(--color-accent-hover); }
+
+.ui-btn--secondary { background: var(--color-surface-muted); color: var(--color-text-secondary); }
+.ui-btn--secondary:hover:not(:disabled) { background: var(--color-border); }
+
+.ui-btn--success { background: var(--color-success-solid); color: var(--color-text-on-accent); }
+.ui-btn--success:hover:not(:disabled) { filter: brightness(0.93); }
+
+.ui-btn--danger { background: var(--color-danger-surface); color: var(--color-danger); border: var(--border-width-thin) solid var(--color-danger-border); }
+.ui-btn--danger:hover:not(:disabled) { background: var(--color-danger-surface-subtle); }
+
+.ui-btn--ghost { background: transparent; color: var(--color-text-secondary); }
+.ui-btn--ghost:hover:not(:disabled) { background: var(--color-surface-sunken); }
+
+/* "Soft" tinted variants — same family as .ui-btn--danger, for the app's
+   existing tinted row-actions (e.g. "تسجيل إرجاع" / "إلغاء الإرجاع" / "تجديد"). */
+.ui-btn--success-soft { background: var(--color-success-surface); color: var(--color-success); }
+.ui-btn--success-soft:hover:not(:disabled) { filter: brightness(0.96); }
+
+.ui-btn--accent-soft { background: var(--color-accent-surface); color: var(--color-accent-hover); }
+.ui-btn--accent-soft:hover:not(:disabled) { filter: brightness(0.97); }
+
+.ui-btn--warning-soft { background: var(--color-warning-surface); color: var(--color-warning); }
+.ui-btn--warning-soft:hover:not(:disabled) { filter: brightness(0.96); }
+
+.ui-btn--info-soft { background: var(--color-info-surface); color: var(--color-info); }
+.ui-btn--info-soft:hover:not(:disabled) { filter: brightness(0.96); }
+
+/* ----------------------------------------------------------------- Input */
+.ui-input {
+  width: 100%;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: var(--border-width-default) solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  transition: border-color var(--duration-fast) var(--ease-standard),
+              box-shadow var(--duration-fast) var(--ease-standard);
+}
+.ui-input::placeholder { color: var(--color-text-faint); }
+.ui-input:hover:not(:disabled):not(:focus) { border-color: var(--color-text-faint); }
+.ui-input:focus { outline: none; border-color: var(--color-border-focus); box-shadow: var(--shadow-focus); }
+.ui-input:disabled { opacity: var(--opacity-disabled); cursor: not-allowed; background: var(--color-surface-muted); }
+.ui-input--error { border-color: var(--color-danger); }
+.ui-input--error:focus { box-shadow: 0 0 0 3px var(--color-danger-surface); }
+.ui-input--sm { height: 32px; padding: 0 var(--space-3); font-size: var(--text-xs); }
+.ui-input--md { height: 38px; padding: 0 var(--space-3); font-size: var(--text-sm); }
+
+/* ------------------------------------------------------------------ Card */
+.ui-card {
+  background: var(--color-surface);
+  border: var(--border-width-thin) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.ui-card--flat { box-shadow: var(--shadow-none); }
+.ui-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface-sunken);
+  border-bottom: var(--border-width-thick) solid var(--color-border);
+}
+.ui-card__title { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-bold); color: var(--color-text); }
+.ui-card__body { padding: var(--space-5); }
+.ui-card__footer {
+  padding: var(--space-4) var(--space-5);
+  border-top: var(--border-width-thin) solid var(--color-border);
+  background: var(--color-surface-sunken);
+}
+
+/* ----------------------------------------------------------------- Badge */
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  font-family: var(--font-sans);
+}
+.ui-badge--sm { padding: 2px 8px; font-size: var(--text-2xs); }
+.ui-badge--md { padding: 4px 12px; font-size: var(--text-xs); }
+.ui-badge--neutral  { background: var(--color-surface-muted);  color: var(--color-text-secondary); }
+.ui-badge--accent   { background: var(--color-accent-surface);  color: var(--color-accent-hover); }
+.ui-badge--success  { background: var(--color-success-surface); color: var(--color-success); }
+.ui-badge--danger   { background: var(--color-danger-surface);  color: var(--color-danger); }
+.ui-badge--warning  { background: var(--color-warning-surface); color: var(--color-warning); }
+.ui-badge--info     { background: var(--color-info-surface);    color: var(--color-info); }
+.ui-badge--tertiary { background: var(--color-tertiary-surface);color: var(--color-tertiary); }
+
+/* ----------------------------------------------------------------- Table */
+.ui-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.ui-table thead th {
+  text-align: start;
+  background: var(--color-surface-muted);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-secondary);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--border-width-thick) solid var(--color-border);
+  white-space: nowrap;
+}
+.ui-table tbody td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--border-width-thin) solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+.ui-table tbody tr { transition: background var(--duration-fast) var(--ease-standard); }
+.ui-table tbody tr:hover { background: var(--color-surface-sunken); }
+.ui-table .ui-table__numeric { font-variant-numeric: tabular-nums; text-align: end; }

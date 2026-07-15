@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { logActivity } from '../logActivity'
+import { Button, Input, Badge, Card, Table } from '../ui'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -143,163 +144,144 @@ export default function Custody({ readOnly = false }: { readOnly?: boolean }) {
 
   const typeInfo = (key: string) => itemTypes.find(t => t.key === key) || itemTypes[4]
 
-  const inputStyle = { width:'100%', padding:'9px 12px', borderRadius:8, border:'2px solid #d1d5db', fontSize:13, boxSizing:'border-box' as const, color:'#111827', background:'#fff', marginBottom:10 }
+  const selectStyle: React.CSSProperties = {
+    padding: '8px 10px', borderRadius: 'var(--radius-md)', border: 'var(--border-width-default) solid var(--color-border-strong)',
+    fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', background: 'var(--color-surface)',
+  }
+  const formSelectStyle: React.CSSProperties = {
+    width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-md)', border: 'var(--border-width-default) solid var(--color-border-strong)',
+    fontSize: 'var(--text-sm)', boxSizing: 'border-box', color: 'var(--color-text)', background: 'var(--color-surface)', marginBottom: 'var(--space-2)',
+  }
+  const formLabelStyle: React.CSSProperties = {
+    display: 'block', marginBottom: 'var(--space-1)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--color-text-secondary)',
+  }
 
   return (
-    <div style={{margin:'24px',fontFamily:'system-ui',direction:'rtl'}}>
+    <div style={{ margin: '24px', fontFamily: 'var(--font-sans)', direction: 'rtl' }}>
 
       {/* تبويبات */}
-      <div style={{display:'flex',gap:6,marginBottom:16,background:'#e5e7eb',padding:4,borderRadius:10,width:'fit-content'}}>
-        <button onClick={()=>setActiveTab('active')}
-          style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
-            background:activeTab==='active'?'#fff':'transparent',color:activeTab==='active'?'#1e40af':'#6b7280',
-            boxShadow:activeTab==='active'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
-          عهد نشطة ({items.filter(i=>i.status==='active').length})
+      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', background: 'var(--color-border)', padding: 'var(--space-1)', borderRadius: 'var(--radius-lg)', width: 'fit-content' }}>
+        <button onClick={() => setActiveTab('active')}
+          style={{ padding: '8px 20px', fontSize: 'var(--text-base)', border: 'none', borderRadius: 'var(--radius-md)', cursor: 'pointer', fontWeight: 'var(--weight-semibold)',
+            background: activeTab === 'active' ? 'var(--color-surface)' : 'transparent', color: activeTab === 'active' ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            boxShadow: activeTab === 'active' ? 'var(--shadow-xs)' : 'none' }}>
+          عهد نشطة ({items.filter(i => i.status === 'active').length})
         </button>
-        <button onClick={()=>setActiveTab('returned')}
-          style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
-            background:activeTab==='returned'?'#fff':'transparent',color:activeTab==='returned'?'#1e40af':'#6b7280',
-            boxShadow:activeTab==='returned'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
-          عهد مُرجَعة ({items.filter(i=>i.status==='returned').length})
+        <button onClick={() => setActiveTab('returned')}
+          style={{ padding: '8px 20px', fontSize: 'var(--text-base)', border: 'none', borderRadius: 'var(--radius-md)', cursor: 'pointer', fontWeight: 'var(--weight-semibold)',
+            background: activeTab === 'returned' ? 'var(--color-surface)' : 'transparent', color: activeTab === 'returned' ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            boxShadow: activeTab === 'returned' ? 'var(--shadow-xs)' : 'none' }}>
+          عهد مُرجَعة ({items.filter(i => i.status === 'returned').length})
         </button>
       </div>
 
-      <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
+      <Card>
         {/* رأس البطاقة */}
-        <div style={{padding:'14px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-          <h2 style={{margin:0,fontSize:16,fontWeight:700,color:'#111827'}}>
+        <div className="ui-card__header">
+          <h2 className="ui-card__title" style={{ fontSize: 'var(--text-md)' }}>
             {activeTab === 'active' ? 'العهد بحوزة الموظفين' : 'العهد المُرجَعة'}
           </h2>
-          <input placeholder="بحث بالاسم أو العهدة أو الرقم التسلسلي..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
-            style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#111827',minWidth:230}}/>
-          <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}
-            style={{padding:'8px 10px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#374151',background:'#fff'}}>
+          <Input placeholder="بحث بالاسم أو العهدة أو الرقم التسلسلي..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            size="sm" style={{ minWidth: 230, width: 'auto' }} />
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={selectStyle}>
             <option value="">كل الأنواع</option>
             {itemTypes.map(t => <option key={t.key} value={t.key}>{t.icon} {t.label}</option>)}
           </select>
-          {(searchTerm||typeFilter) && (
-            <button onClick={()=>{setSearchTerm('');setTypeFilter('')}}
-              style={{background:'#f3f4f6',color:'#6b7280',border:'none',borderRadius:8,padding:'8px 12px',cursor:'pointer',fontSize:12}}>مسح</button>
+          {(searchTerm || typeFilter) && (
+            <Button variant="secondary" size="sm" onClick={() => { setSearchTerm(''); setTypeFilter('') }}>مسح</Button>
           )}
           {!readOnly && activeTab === 'active' && (
-            <button onClick={()=>setShowForm(!showForm)}
-              style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:13,fontWeight:600,marginRight:'auto'}}>
+            <Button variant="primary" size="md" onClick={() => setShowForm(!showForm)} style={{ marginInlineStart: 'auto' }}>
               {showForm ? 'إلغاء' : '+ تسجيل عهدة جديدة'}
-            </button>
+            </Button>
           )}
         </div>
 
         {/* نموذج إضافة */}
         {showForm && !readOnly && (
-          <div style={{padding:'20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,maxWidth:800}}>
+          <div style={{ padding: 'var(--space-5)', borderBottom: 'var(--border-width-thick) solid var(--color-border)', background: 'var(--color-surface-sunken)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-3)', maxWidth: 800 }}>
               <div>
-                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الموظف *</label>
-                <select value={form.employee_id} onChange={e=>setForm({...form,employee_id:e.target.value})} style={inputStyle}>
+                <label style={formLabelStyle}>الموظف *</label>
+                <select value={form.employee_id} onChange={e => setForm({ ...form, employee_id: e.target.value })} style={formSelectStyle}>
                   <option value="">اختر الموظف...</option>
                   {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name} — {emp.job_title}</option>)}
                 </select>
               </div>
+              <Input label="اسم العهدة *" value={form.item_name} onChange={e => setForm({ ...form, item_name: e.target.value })} placeholder="مثال: سيارة تويوتا هايلوكس 2022" />
               <div>
-                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>اسم العهدة *</label>
-                <input value={form.item_name} onChange={e=>setForm({...form,item_name:e.target.value})} placeholder="مثال: سيارة تويوتا هايلوكس 2022" style={inputStyle}/>
-              </div>
-              <div>
-                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>النوع *</label>
-                <select value={form.item_type} onChange={e=>setForm({...form,item_type:e.target.value})} style={inputStyle}>
+                <label style={formLabelStyle}>النوع *</label>
+                <select value={form.item_type} onChange={e => setForm({ ...form, item_type: e.target.value })} style={formSelectStyle}>
                   {itemTypes.map(t => <option key={t.key} value={t.key}>{t.icon} {t.label}</option>)}
                 </select>
               </div>
-              <div>
-                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الرقم التسلسلي / رقم اللوحة (اختياري)</label>
-                <input value={form.serial_number} onChange={e=>setForm({...form,serial_number:e.target.value})} placeholder="مثال: 123456 أو أ ب ج 1234" style={inputStyle}/>
-              </div>
-              <div>
-                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ الاستلام *</label>
-                <input type="date" value={form.received_date} onChange={e=>setForm({...form,received_date:e.target.value})} style={inputStyle}/>
-              </div>
-              <div>
-                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>ملاحظات (اختياري)</label>
-                <input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="حالة العهدة، ملحقاتها..." style={inputStyle}/>
-              </div>
+              <Input label="الرقم التسلسلي / رقم اللوحة (اختياري)" value={form.serial_number} onChange={e => setForm({ ...form, serial_number: e.target.value })} placeholder="مثال: 123456 أو أ ب ج 1234" />
+              <Input label="تاريخ الاستلام *" type="date" value={form.received_date} onChange={e => setForm({ ...form, received_date: e.target.value })} />
+              <Input label="ملاحظات (اختياري)" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="حالة العهدة، ملحقاتها..." />
             </div>
-            <button onClick={addItem} disabled={saving}
-              style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+            <Button variant="success" size="md" onClick={addItem} disabled={saving} style={{ marginTop: 'var(--space-2)' }}>
               {saving ? 'جارٍ الحفظ...' : 'تسجيل العهدة'}
-            </button>
+            </Button>
           </div>
         )}
 
         {/* الجدول */}
         {loading ? (
-          <div style={{textAlign:'center',padding:'3rem',color:'#6b7280'}}>جارٍ التحميل...</div>
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-muted)' }}>جارٍ التحميل...</div>
         ) : filteredItems.length === 0 ? (
-          <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-faint)', fontSize: 'var(--text-base)' }}>
             {activeTab === 'active' ? 'لا توجد عهد نشطة' : 'لا توجد عهد مُرجَعة'}
           </div>
         ) : (
-          <div style={{overflowX:'auto'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead>
-                <tr style={{background:'#f3f4f6'}}>
-                  {['الموظف','العهدة','النوع','الرقم التسلسلي','تاريخ الاستلام',activeTab==='returned'?'تاريخ الإرجاع':'','ملاحظات',''].filter(h=>h!=='' || true).map((h,i)=>(
-                    <th key={i} style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredItems.map(item => {
-                  const t = typeInfo(item.item_type)
-                  return (
-                    <tr key={item.id} style={{borderBottom:'1px solid #e5e7eb'}}>
-                      <td style={{padding:'10px 14px',fontWeight:600,color:'#111827'}}>
-                        {empName(item.employee_id)}
-                        {activeTab === 'active' && (activeCountByEmployee[item.employee_id] || 0) > 1 && (
-                          <span style={{marginRight:6,background:'#dbeafe',color:'#1d4ed8',padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:700}}>
-                            {activeCountByEmployee[item.employee_id]} عهد
-                          </span>
-                        )}
-                      </td>
-                      <td style={{padding:'10px 14px',color:'#111827'}}>{item.item_name}</td>
-                      <td style={{padding:'10px 14px'}}>
-                        <span style={{background:'#f3f4f6',color:'#374151',padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600}}>
-                          {t.icon} {t.label}
+          <Table>
+            <thead>
+              <tr>
+                {['الموظف', 'العهدة', 'النوع', 'الرقم التسلسلي', 'تاريخ الاستلام', activeTab === 'returned' ? 'تاريخ الإرجاع' : '', 'ملاحظات', ''].map((h, i) => (
+                  <Table.Th key={i}>{h}</Table.Th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredItems.map(item => {
+                const t = typeInfo(item.item_type)
+                return (
+                  <tr key={item.id}>
+                    <Table.Td style={{ fontWeight: 'var(--weight-semibold)', color: 'var(--color-text)' }}>
+                      {empName(item.employee_id)}
+                      {activeTab === 'active' && (activeCountByEmployee[item.employee_id] || 0) > 1 && (
+                        <span style={{ marginInlineStart: 6, display: 'inline-block' }}>
+                          <Badge tone="accent" size="sm">{activeCountByEmployee[item.employee_id]} عهد</Badge>
                         </span>
-                      </td>
-                      <td style={{padding:'10px 14px',color:'#6b7280',direction:'ltr',textAlign:'right'}}>{item.serial_number || '—'}</td>
-                      <td style={{padding:'10px 14px',color:'#6b7280'}}>{fmtDate(item.received_date)}</td>
-                      {activeTab === 'returned' && <td style={{padding:'10px 14px',color:'#15803d',fontWeight:600}}>{fmtDate(item.returned_date)}</td>}
-                      {activeTab === 'active' && <td style={{padding:'10px 14px'}}></td>}
-                      <td style={{padding:'10px 14px',color:'#6b7280',fontSize:12,maxWidth:180}}>{item.notes || '—'}</td>
-                      <td style={{padding:'10px 14px'}}>
-                        {!readOnly && (
-                          <div style={{display:'flex',gap:6}}>
-                            {item.status === 'active' ? (
-                              <button onClick={()=>returnItem(item)}
-                                style={{background:'#dcfce7',color:'#15803d',border:'none',borderRadius:6,padding:'5px 12px',cursor:'pointer',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>
-                                تسجيل إرجاع
-                              </button>
-                            ) : (
-                              <button onClick={()=>undoReturn(item)}
-                                style={{background:'#dbeafe',color:'#1d4ed8',border:'none',borderRadius:6,padding:'5px 12px',cursor:'pointer',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>
-                                إلغاء الإرجاع
-                              </button>
-                            )}
-                            <button onClick={()=>deleteItem(item)}
-                              style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600}}>
-                              حذف
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                      )}
+                    </Table.Td>
+                    <Table.Td style={{ color: 'var(--color-text)' }}>{item.item_name}</Table.Td>
+                    <Table.Td>
+                      <Badge tone="neutral">{t.icon} {t.label}</Badge>
+                    </Table.Td>
+                    <Table.Td style={{ direction: 'ltr', textAlign: 'right' }}>{item.serial_number || '—'}</Table.Td>
+                    <Table.Td>{fmtDate(item.received_date)}</Table.Td>
+                    {activeTab === 'returned' && <Table.Td style={{ color: 'var(--color-success)', fontWeight: 'var(--weight-semibold)' }}>{fmtDate(item.returned_date)}</Table.Td>}
+                    {activeTab === 'active' && <Table.Td></Table.Td>}
+                    <Table.Td style={{ fontSize: 'var(--text-xs)', maxWidth: 180 }}>{item.notes || '—'}</Table.Td>
+                    <Table.Td>
+                      {!readOnly && (
+                        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                          {item.status === 'active' ? (
+                            <Button variant="success-soft" size="sm" onClick={() => returnItem(item)}>تسجيل إرجاع</Button>
+                          ) : (
+                            <Button variant="accent-soft" size="sm" onClick={() => undoReturn(item)}>إلغاء الإرجاع</Button>
+                          )}
+                          <Button variant="danger" size="sm" onClick={() => deleteItem(item)}>حذف</Button>
+                        </div>
+                      )}
+                    </Table.Td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </Table>
         )}
-      </div>
+      </Card>
     </div>
   )
 }

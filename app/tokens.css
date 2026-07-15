@@ -1,0 +1,222 @@
+/*
+ * Design tokens — see DESIGN_TOKENS.md for the full spec and the
+ * old-value -> token mapping table this was generated from.
+ *
+ * Two layers: primitives (raw values, never referenced directly by
+ * components) and semantic aliases (what components actually use).
+ * Only the semantic layer is considered a stable public API.
+ */
+
+:root {
+  /* ---- Color primitives ---- */
+  --grey-0:   #ffffff;
+  --grey-25:  #f9fafb;
+  --grey-50:  #f3f4f6;
+  --grey-75:  #eef1f6;
+  --grey-100: #e5e7eb;
+  --grey-200: #d1d5db;
+  --grey-300: #9ca3af;
+  --grey-400: #6b7280;
+  --grey-500: #4b5563;
+  --grey-600: #374151;
+  --grey-700: #1f2430;
+  --grey-800: #111827;
+  --grey-900: #0b0e14;
+
+  --blue-50:  #eff6ff;
+  --blue-100: #dbeafe;
+  --blue-200: #bfdbfe;
+  --blue-300: #93c5fd;
+  --blue-500: #3b82f6;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --blue-800: #1e40af;
+  --blue-900: #0f2557;
+
+  --green-50: #dcfce7;  --green-300: #86efac; --green-500: #16a34a; --green-600: #15803d;
+  --red-50:   #fef2f2;  --red-100:   #fee2e2; --red-300:   #fca5a5; --red-500:   #dc2626;
+  --amber-50: #fef9c3;  --amber-300: #fcd34d; --amber-500: #b45309;
+  --violet-50:#ede9fe;  --violet-300:#c4b5fd; --violet-500:#7c3aed;
+  --cyan-50:  #cffafe;  --cyan-500:  #0891b2; --cyan-600:  #0e7490;
+
+  /* ---- Color semantics (light) ---- */
+  --color-canvas: var(--grey-75);
+  --color-surface: var(--grey-0);
+  --color-surface-sunken: var(--grey-25);
+  --color-surface-muted: var(--grey-50);
+
+  --color-text: var(--grey-800);
+  --color-text-secondary: var(--grey-600);
+  --color-text-muted: var(--grey-400);
+  --color-text-faint: var(--grey-300);
+  --color-text-on-accent: var(--grey-0);
+  --color-text-on-dark: rgba(255, 255, 255, 0.92);
+
+  --color-border: var(--grey-100);
+  --color-border-strong: var(--grey-200);
+  --color-border-focus: var(--blue-500);
+
+  --color-accent: var(--blue-800);
+  --color-accent-hover: var(--blue-700);
+  --color-accent-subtle: var(--blue-50);
+  --color-accent-surface: var(--blue-100);
+  --color-accent-border: var(--blue-200);
+  --color-sidebar-bg: var(--blue-900);
+
+  --color-success: var(--green-600);
+  --color-success-surface: var(--green-50);
+  --color-success-border: var(--green-300);
+  --color-success-solid: var(--green-500);
+
+  --color-danger: var(--red-500);
+  --color-danger-surface: var(--red-100);
+  --color-danger-surface-subtle: var(--red-50);
+  --color-danger-border: var(--red-300);
+
+  --color-warning: var(--amber-500);
+  --color-warning-surface: var(--amber-50);
+  --color-warning-border: var(--amber-300);
+
+  --color-info: var(--violet-500);
+  --color-info-surface: var(--violet-50);
+  --color-info-border: var(--violet-300);
+
+  --color-tertiary: var(--cyan-600);
+  --color-tertiary-surface: var(--cyan-50);
+
+  /* ---- Typography ---- */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Tahoma, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", monospace;
+
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 32px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+  --leading-loose: 1.75;
+
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+
+  /* ---- Spacing (4px base grid) ---- */
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ---- Radius ---- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
+
+  /* ---- Shadow (light) ---- */
+  --shadow-none: none;
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 2px 4px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 8px 16px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.06);
+  --shadow-focus: 0 0 0 3px var(--color-accent-subtle);
+
+  /* ---- Opacity ---- */
+  --opacity-disabled: 0.5;
+  --opacity-hover-overlay: 0.06;
+  --opacity-pressed-overlay: 0.1;
+  --opacity-backdrop: 0.4;
+
+  /* ---- Borders ---- */
+  --border-width-thin: 1px;
+  --border-width-default: 1.5px;
+  --border-width-thick: 2px;
+
+  /* ---- Motion ---- */
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --duration-slower: 450ms;
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ---- Breakpoints (reference values — see DESIGN_TOKENS.md §2.9) ---- */
+  --bp-sm: 640px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1280px;
+
+  /* ---- Z-index ---- */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-dropdown: 20;
+  --z-overlay: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+  --z-tooltip: 60;
+}
+
+/*
+ * NOTE: no `@media (prefers-color-scheme: dark)` block yet, on purpose.
+ * Only page.tsx (login screen), Custody, and Contracts consume these tokens
+ * so far — every other module still has 100% hardcoded light-mode hex.
+ * Auto-switching on OS dark-mode preference right now would make the three
+ * migrated screens flip dark while every unmigrated screen stayed light,
+ * which is a worse, more inconsistent experience than the single light
+ * theme the app has today. The dark values live below as explicit,
+ * opt-in-only overrides (`[data-theme="dark"]`) so they're ready the
+ * moment a real theme toggle — and full app coverage — exists; nothing
+ * sets `data-theme` today, so `:root` always resolves to the light values.
+ */
+:root[data-theme="dark"] {
+  --color-canvas: #0d1117; --color-surface: #151b23; --color-surface-sunken: #1b222c; --color-surface-muted: #1f2733;
+  --color-text: #e6e9ef; --color-text-secondary: #aab2c0; --color-text-muted: #7b8494; --color-text-faint: #565f70;
+  --color-border: #232a37; --color-border-strong: #313a4a;
+  --color-accent: #6f95e8; --color-accent-hover: #86a6ee; --color-accent-subtle: #17233f; --color-accent-surface: #1e2c4d; --color-accent-border: #2c3f6e;
+  --color-success: #6fd08c; --color-success-surface: #132a1c; --color-success-border: #204a30; --color-success-solid: #2f9c53;
+  --color-danger: #ef6a5f; --color-danger-surface: #33191a; --color-danger-surface-subtle: #241214; --color-danger-border: #5a2a29;
+  --color-warning: #e0a94f; --color-warning-surface: #2e2313; --color-warning-border: #4d3a1c;
+  --color-info: #a98af0; --color-info-surface: #241c3a; --color-info-border: #3a2d5c;
+  --color-tertiary: #59c2d0; --color-tertiary-surface: #12262a;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+:root[data-theme="light"] {
+  --color-canvas: var(--grey-75); --color-surface: var(--grey-0); --color-surface-sunken: var(--grey-25); --color-surface-muted: var(--grey-50);
+  --color-text: var(--grey-800); --color-text-secondary: var(--grey-600); --color-text-muted: var(--grey-400); --color-text-faint: var(--grey-300);
+  --color-border: var(--grey-100); --color-border-strong: var(--grey-200);
+  --color-accent: var(--blue-800); --color-accent-hover: var(--blue-700); --color-accent-subtle: var(--blue-50); --color-accent-surface: var(--blue-100); --color-accent-border: var(--blue-200);
+  --color-success: var(--green-600); --color-success-surface: var(--green-50); --color-success-border: var(--green-300); --color-success-solid: var(--green-500);
+  --color-danger: var(--red-500); --color-danger-surface: var(--red-100); --color-danger-surface-subtle: var(--red-50); --color-danger-border: var(--red-300);
+  --color-warning: var(--amber-500); --color-warning-surface: var(--amber-50); --color-warning-border: var(--amber-300);
+  --color-info: var(--violet-500); --color-info-surface: var(--violet-50); --color-info-border: var(--violet-300);
+  --color-tertiary: var(--cyan-600); --color-tertiary-surface: var(--cyan-50);
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 2px 4px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 8px 16px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.06);
+}

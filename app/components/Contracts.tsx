@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { logActivity } from '../logActivity'
+import { Button, Input, Badge, Card, Table } from '../ui'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -24,6 +25,8 @@ interface Contract {
   notes: string | null
   created_at: string
 }
+
+type BadgeTone = 'neutral' | 'accent' | 'success' | 'danger' | 'warning' | 'info' | 'tertiary'
 
 export default function Contracts({ readOnly = false }: { readOnly?: boolean }) {
   const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active')
@@ -69,14 +72,14 @@ export default function Contracts({ readOnly = false }: { readOnly?: boolean }) 
     return Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
   }
 
-  function contractState(c: Contract): { label: string; bg: string; color: string; priority: number } {
-    if (c.status === 'renewed') return { label: 'مجدد', bg: '#dbeafe', color: '#1d4ed8', priority: 4 }
-    if (c.status === 'terminated') return { label: 'ملغى', bg: '#f3f4f6', color: '#6b7280', priority: 5 }
-    if (c.contract_type === 'permanent' || !c.end_date) return { label: 'غير محدد المدة', bg: '#ede9fe', color: '#7c3aed', priority: 3 }
+  function contractState(c: Contract): { label: string; tone: BadgeTone; priority: number } {
+    if (c.status === 'renewed') return { label: 'مجدد', tone: 'accent', priority: 4 }
+    if (c.status === 'terminated') return { label: 'ملغى', tone: 'neutral', priority: 5 }
+    if (c.contract_type === 'permanent' || !c.end_date) return { label: 'غير محدد المدة', tone: 'info', priority: 3 }
     const days = daysRemaining(c)!
-    if (days < 0) return { label: 'منتهي', bg: '#fee2e2', color: '#dc2626', priority: 0 }
-    if (days <= 30) return { label: `ينتهي خلال ${days} يوم`, bg: '#fef9c3', color: '#b45309', priority: 1 }
-    return { label: 'نشط', bg: '#dcfce7', color: '#15803d', priority: 2 }
+    if (days < 0) return { label: 'منتهي', tone: 'danger', priority: 0 }
+    if (days <= 30) return { label: `ينتهي خلال ${days} يوم`, tone: 'warning', priority: 1 }
+    return { label: 'نشط', tone: 'success', priority: 2 }
   }
 
   async function addContract() {
@@ -160,167 +163,142 @@ export default function Contracts({ readOnly = false }: { readOnly?: boolean }) 
     return d ? new Date(d).toLocaleDateString('ar-IQ') : '—'
   }
 
-  const inputStyle = { width:'100%', padding:'9px 12px', borderRadius:8, border:'2px solid #d1d5db', fontSize:13, boxSizing:'border-box' as const, color:'#111827', background:'#fff', marginBottom:10 }
+  const formSelectStyle: React.CSSProperties = {
+    width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-md)', border: 'var(--border-width-default) solid var(--color-border-strong)',
+    fontSize: 'var(--text-sm)', boxSizing: 'border-box', color: 'var(--color-text)', background: 'var(--color-surface)', marginBottom: 'var(--space-2)',
+  }
+  const formLabelStyle: React.CSSProperties = {
+    display: 'block', marginBottom: 'var(--space-1)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', color: 'var(--color-text-secondary)',
+  }
 
   return (
-    <div style={{margin:'24px',fontFamily:'system-ui',direction:'rtl'}}>
+    <div style={{ margin: '24px', fontFamily: 'var(--font-sans)', direction: 'rtl' }}>
 
       {/* تنبيهات العقود */}
       {(alerts.expired > 0 || alerts.expiringSoon > 0) && (
-        <div style={{background:'#fff',border:'1px solid #fcd34d',borderRadius:12,padding:'14px 20px',marginBottom:16,display:'flex',gap:16,flexWrap:'wrap',alignItems:'center'}}>
-          <span style={{fontSize:14,fontWeight:700,color:'#111827'}}>⚠ تنبيهات العقود:</span>
-          {alerts.expired > 0 && (
-            <span style={{background:'#fee2e2',color:'#dc2626',padding:'5px 14px',borderRadius:20,fontSize:12,fontWeight:700}}>
-              {alerts.expired} عقد منتهي يحتاج إجراء
-            </span>
-          )}
-          {alerts.expiringSoon > 0 && (
-            <span style={{background:'#fef9c3',color:'#b45309',padding:'5px 14px',borderRadius:20,fontSize:12,fontWeight:700}}>
-              {alerts.expiringSoon} عقد ينتهي خلال 30 يوماً
-            </span>
-          )}
+        <div style={{ background: 'var(--color-surface)', border: 'var(--border-width-thin) solid var(--color-warning-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4) var(--space-5)', marginBottom: 'var(--space-4)', display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)', color: 'var(--color-text)' }}>⚠ تنبيهات العقود:</span>
+          {alerts.expired > 0 && <Badge tone="danger">{alerts.expired} عقد منتهي يحتاج إجراء</Badge>}
+          {alerts.expiringSoon > 0 && <Badge tone="warning">{alerts.expiringSoon} عقد ينتهي خلال 30 يوماً</Badge>}
         </div>
       )}
 
       {/* تبويبات */}
-      <div style={{display:'flex',gap:6,marginBottom:16,background:'#e5e7eb',padding:4,borderRadius:10,width:'fit-content'}}>
-        <button onClick={()=>setActiveTab('active')}
-          style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
-            background:activeTab==='active'?'#fff':'transparent',color:activeTab==='active'?'#1e40af':'#6b7280',
-            boxShadow:activeTab==='active'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', background: 'var(--color-border)', padding: 'var(--space-1)', borderRadius: 'var(--radius-lg)', width: 'fit-content' }}>
+        <button onClick={() => setActiveTab('active')}
+          style={{ padding: '8px 20px', fontSize: 'var(--text-base)', border: 'none', borderRadius: 'var(--radius-md)', cursor: 'pointer', fontWeight: 'var(--weight-semibold)',
+            background: activeTab === 'active' ? 'var(--color-surface)' : 'transparent', color: activeTab === 'active' ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            boxShadow: activeTab === 'active' ? 'var(--shadow-xs)' : 'none' }}>
           العقود النشطة ({activeContracts.length})
         </button>
-        <button onClick={()=>setActiveTab('archive')}
-          style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
-            background:activeTab==='archive'?'#fff':'transparent',color:activeTab==='archive'?'#1e40af':'#6b7280',
-            boxShadow:activeTab==='archive'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+        <button onClick={() => setActiveTab('archive')}
+          style={{ padding: '8px 20px', fontSize: 'var(--text-base)', border: 'none', borderRadius: 'var(--radius-md)', cursor: 'pointer', fontWeight: 'var(--weight-semibold)',
+            background: activeTab === 'archive' ? 'var(--color-surface)' : 'transparent', color: activeTab === 'archive' ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            boxShadow: activeTab === 'archive' ? 'var(--shadow-xs)' : 'none' }}>
           الأرشيف ({archivedContracts.length})
         </button>
       </div>
 
-      <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
+      <Card>
         {/* رأس البطاقة */}
-        <div style={{padding:'14px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-          <h2 style={{margin:0,fontSize:16,fontWeight:700,color:'#111827'}}>
+        <div className="ui-card__header">
+          <h2 className="ui-card__title" style={{ fontSize: 'var(--text-md)' }}>
             {activeTab === 'active' ? 'العقود النشطة' : 'أرشيف العقود'}
           </h2>
-          <input placeholder="بحث باسم الموظف..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
-            style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#111827',minWidth:200}}/>
+          <Input placeholder="بحث باسم الموظف..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            size="sm" style={{ minWidth: 200, width: 'auto' }} />
           {searchTerm && (
-            <button onClick={()=>setSearchTerm('')}
-              style={{background:'#f3f4f6',color:'#6b7280',border:'none',borderRadius:8,padding:'8px 12px',cursor:'pointer',fontSize:12}}>مسح</button>
+            <Button variant="secondary" size="sm" onClick={() => setSearchTerm('')}>مسح</Button>
           )}
           {!readOnly && activeTab === 'active' && (
-            <button onClick={()=>setShowForm(!showForm)}
-              style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:13,fontWeight:600,marginRight:'auto'}}>
+            <Button variant="primary" size="md" onClick={() => setShowForm(!showForm)} style={{ marginInlineStart: 'auto' }}>
               {showForm ? 'إلغاء' : '+ عقد جديد'}
-            </button>
+            </Button>
           )}
         </div>
 
         {/* نموذج إضافة */}
         {showForm && !readOnly && (
-          <div style={{padding:'20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,maxWidth:640}}>
+          <div style={{ padding: 'var(--space-5)', borderBottom: 'var(--border-width-thick) solid var(--color-border)', background: 'var(--color-surface-sunken)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', maxWidth: 640 }}>
               <div>
-                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الموظف *</label>
-                <select value={form.employee_id} onChange={e=>setForm({...form,employee_id:e.target.value})} style={inputStyle}>
+                <label style={formLabelStyle}>الموظف *</label>
+                <select value={form.employee_id} onChange={e => setForm({ ...form, employee_id: e.target.value })} style={formSelectStyle}>
                   <option value="">اختر الموظف...</option>
                   {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name} — {emp.job_title}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>نوع العقد *</label>
-                <select value={form.contract_type} onChange={e=>setForm({...form,contract_type:e.target.value})} style={inputStyle}>
+                <label style={formLabelStyle}>نوع العقد *</label>
+                <select value={form.contract_type} onChange={e => setForm({ ...form, contract_type: e.target.value })} style={formSelectStyle}>
                   <option value="fixed">محدد المدة</option>
                   <option value="permanent">غير محدد المدة</option>
                 </select>
               </div>
-              <div>
-                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ بداية العقد *</label>
-                <input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})} style={inputStyle}/>
-              </div>
+              <Input label="تاريخ بداية العقد *" type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} />
               {form.contract_type === 'fixed' && (
-                <div>
-                  <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ نهاية العقد *</label>
-                  <input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})} style={inputStyle}/>
-                </div>
+                <Input label="تاريخ نهاية العقد *" type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} />
               )}
-              <div style={{gridColumn:'span 2'}}>
-                <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>ملاحظات (اختياري)</label>
-                <input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="شروط خاصة، مرجع العقد الورقي..." style={inputStyle}/>
+              <div style={{ gridColumn: 'span 2' }}>
+                <Input label="ملاحظات (اختياري)" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="شروط خاصة، مرجع العقد الورقي..." />
               </div>
             </div>
-            <button onClick={addContract} disabled={saving}
-              style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+            <Button variant="success" size="md" onClick={addContract} disabled={saving} style={{ marginTop: 'var(--space-2)' }}>
               {saving ? 'جارٍ الحفظ...' : 'حفظ العقد'}
-            </button>
+            </Button>
           </div>
         )}
 
         {/* الجدول */}
         {loading ? (
-          <div style={{textAlign:'center',padding:'3rem',color:'#6b7280'}}>جارٍ التحميل...</div>
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-muted)' }}>جارٍ التحميل...</div>
         ) : filteredContracts.length === 0 ? (
-          <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-faint)', fontSize: 'var(--text-base)' }}>
             {activeTab === 'active' ? 'لا توجد عقود نشطة — أضف أول عقد' : 'الأرشيف فارغ'}
           </div>
         ) : (
-          <div style={{overflowX:'auto'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead>
-                <tr style={{background:'#f3f4f6'}}>
-                  {['الموظف','المنصب','نوع العقد','تاريخ البداية','تاريخ النهاية','الحالة','ملاحظات',''].map((h,i)=>(
-                    <th key={i} style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredContracts.map(c => {
-                  const state = contractState(c)
-                  return (
-                    <tr key={c.id} style={{borderBottom:'1px solid #e5e7eb'}}>
-                      <td style={{padding:'10px 14px',fontWeight:600,color:'#111827'}}>{empName(c.employee_id)}</td>
-                      <td style={{padding:'10px 14px',color:'#6b7280',fontSize:12}}>{empTitle(c.employee_id)}</td>
-                      <td style={{padding:'10px 14px',color:'#374151'}}>{c.contract_type === 'fixed' ? 'محدد المدة' : 'غير محدد المدة'}</td>
-                      <td style={{padding:'10px 14px',color:'#6b7280'}}>{fmtDate(c.start_date)}</td>
-                      <td style={{padding:'10px 14px',color:'#6b7280'}}>{fmtDate(c.end_date)}</td>
-                      <td style={{padding:'10px 14px'}}>
-                        <span style={{background:state.bg,color:state.color,padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>
-                          {state.label}
-                        </span>
-                      </td>
-                      <td style={{padding:'10px 14px',color:'#6b7280',fontSize:12,maxWidth:160}}>{c.notes || '—'}</td>
-                      <td style={{padding:'10px 14px'}}>
-                        {!readOnly && (
-                          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                            {c.status === 'active' && (
-                              <>
-                                <button onClick={()=>renewContract(c)}
-                                  style={{background:'#dbeafe',color:'#1d4ed8',border:'none',borderRadius:6,padding:'5px 12px',cursor:'pointer',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>
-                                  تجديد
-                                </button>
-                                <button onClick={()=>terminateContract(c)}
-                                  style={{background:'#fef9c3',color:'#b45309',border:'none',borderRadius:6,padding:'5px 12px',cursor:'pointer',fontSize:11,fontWeight:600}}>
-                                  إلغاء
-                                </button>
-                              </>
-                            )}
-                            <button onClick={()=>deleteContract(c)}
-                              style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600}}>
-                              حذف
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <thead>
+              <tr>
+                {['الموظف', 'المنصب', 'نوع العقد', 'تاريخ البداية', 'تاريخ النهاية', 'الحالة', 'ملاحظات', ''].map((h, i) => (
+                  <Table.Th key={i}>{h}</Table.Th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredContracts.map(c => {
+                const state = contractState(c)
+                return (
+                  <tr key={c.id}>
+                    <Table.Td style={{ fontWeight: 'var(--weight-semibold)', color: 'var(--color-text)' }}>{empName(c.employee_id)}</Table.Td>
+                    <Table.Td style={{ fontSize: 'var(--text-xs)' }}>{empTitle(c.employee_id)}</Table.Td>
+                    <Table.Td>{c.contract_type === 'fixed' ? 'محدد المدة' : 'غير محدد المدة'}</Table.Td>
+                    <Table.Td>{fmtDate(c.start_date)}</Table.Td>
+                    <Table.Td>{fmtDate(c.end_date)}</Table.Td>
+                    <Table.Td>
+                      <Badge tone={state.tone}>{state.label}</Badge>
+                    </Table.Td>
+                    <Table.Td style={{ fontSize: 'var(--text-xs)', maxWidth: 160 }}>{c.notes || '—'}</Table.Td>
+                    <Table.Td>
+                      {!readOnly && (
+                        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                          {c.status === 'active' && (
+                            <>
+                              <Button variant="accent-soft" size="sm" onClick={() => renewContract(c)}>تجديد</Button>
+                              <Button variant="warning-soft" size="sm" onClick={() => terminateContract(c)}>إلغاء</Button>
+                            </>
+                          )}
+                          <Button variant="danger" size="sm" onClick={() => deleteContract(c)}>حذف</Button>
+                        </div>
+                      )}
+                    </Table.Td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </Table>
         )}
-      </div>
+      </Card>
     </div>
   )
 }

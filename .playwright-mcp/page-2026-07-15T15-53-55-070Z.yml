@@ -1,0 +1,91 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e26]:
+      - generic [ref=e28]:
+        - generic [ref=e29]: Sanya International
+        - generic [ref=e30]: منصة إدارة الشركة
+      - navigation [ref=e31]:
+        - button "لوحة المعلومات" [ref=e33] [cursor=pointer]
+        - generic [ref=e40]:
+          - generic [ref=e41]: الموارد البشرية
+          - button "الموظفين" [ref=e42] [cursor=pointer]
+          - button "الحضور" [ref=e49] [cursor=pointer]
+          - button "الرواتب" [ref=e55] [cursor=pointer]
+          - button "الكتب الرسمية" [ref=e60] [cursor=pointer]
+          - button "العهد المالية" [active] [ref=e66] [cursor=pointer]
+          - button "العقود" [ref=e71] [cursor=pointer]
+          - button "الأوفرتايم" [ref=e77] [cursor=pointer]
+        - generic [ref=e83]:
+          - generic [ref=e84]: المالية
+          - button "الحسابات" [ref=e85] [cursor=pointer]
+        - generic [ref=e90]:
+          - generic [ref=e91]: الإدارة
+          - button "التأشيرات" [ref=e92] [cursor=pointer]
+          - button "المهام" [ref=e98] [cursor=pointer]
+          - button "التقارير السنوية" [ref=e104] [cursor=pointer]
+      - generic [ref=e109]:
+        - button "طي القائمة" [ref=e110] [cursor=pointer]
+        - button "تسجيل خروج" [ref=e114] [cursor=pointer]
+    - generic [ref=e118]:
+      - generic [ref=e119]:
+        - heading "العهد المالية" [level=1] [ref=e225]
+        - generic [ref=e121]:
+          - generic [ref=e122]: guest_1@sanyacement.com
+          - generic [ref=e124]: ضيف 1
+      - generic [ref=e226]:
+        - generic [ref=e227]:
+          - button "عهد نشطة (3)" [ref=e228] [cursor=pointer]
+          - button "عهد مُرجَعة (0)" [ref=e229] [cursor=pointer]
+        - generic [ref=e230]:
+          - generic [ref=e231]:
+            - heading "العهد بحوزة الموظفين" [level=2] [ref=e232]
+            - textbox "بحث بالاسم أو العهدة أو الرقم التسلسلي..." [ref=e233]
+            - combobox [ref=e234]:
+              - option "كل الأنواع" [selected]
+              - option "🚗 سيارة"
+              - option "💻 حاسوب"
+              - option "📱 هاتف"
+              - option "🧰 أدوات ومعدات"
+              - option "📦 أخرى"
+          - table [ref=e236]:
+            - rowgroup [ref=e237]:
+              - row [ref=e238]:
+                - columnheader "الموظف" [ref=e239]
+                - columnheader "العهدة" [ref=e240]
+                - columnheader "النوع" [ref=e241]
+                - columnheader "الرقم التسلسلي" [ref=e242]
+                - columnheader "تاريخ الاستلام" [ref=e243]
+                - columnheader [ref=e244]
+                - columnheader "ملاحظات" [ref=e245]
+                - columnheader [ref=e246]
+            - rowgroup [ref=e247]:
+              - row [ref=e248]:
+                - cell "اركان مسلم عبد" [ref=e249]
+                - cell "سيارة تيوتا هايلوكس" [ref=e250]
+                - cell "🚗 سيارة" [ref=e251]
+                - cell "—" [ref=e253]
+                - cell "١٠‏/٧‏/٢٠٢٦" [ref=e254]
+                - cell [ref=e255]
+                - cell "جديده" [ref=e256]
+                - cell [ref=e257]
+              - row [ref=e258]:
+                - cell "فارس ناصر عبد الرزاق" [ref=e259]
+                - cell "سيارة تيوتا هايلوكس" [ref=e260]
+                - cell "🚗 سيارة" [ref=e261]
+                - cell "—" [ref=e263]
+                - cell "١٠‏/٧‏/٢٠٢٦" [ref=e264]
+                - cell [ref=e265]
+                - cell "جديده" [ref=e266]
+                - cell [ref=e267]
+              - row [ref=e268]:
+                - cell "نصر الله فيض الله" [ref=e269]
+                - cell "حاسوب لينوفو" [ref=e270]
+                - cell "💻 حاسوب" [ref=e271]
+                - cell "—" [ref=e273]
+                - cell "١٣‏/٦‏/٢٠٢٦" [ref=e274]
+                - cell [ref=e275]
+                - cell "جديده" [ref=e276]
+                - cell [ref=e277]
+  - button "Open Next.js Dev Tools" [ref=e20] [cursor=pointer]
+  - alert [ref=e24]
+  - generic [ref=e224]: 0 م

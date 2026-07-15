@@ -1,0 +1,4 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]: جارٍ تحميل الصلاحيات...
+  - button "Open Next.js Dev Tools" [ref=e20] [cursor=pointer]
+  - alert [ref=e24]

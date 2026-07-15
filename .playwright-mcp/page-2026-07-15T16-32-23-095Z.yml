@@ -1,0 +1,91 @@
+- generic [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - complementary [ref=f1e27]:
+      - generic [ref=f1e29]:
+        - generic [ref=f1e30]: Sanya International
+        - generic [ref=f1e31]: منصة إدارة الشركة
+      - navigation [ref=f1e32]:
+        - button "لوحة المعلومات" [ref=f1e34] [cursor=pointer]
+        - generic [ref=f1e41]:
+          - generic [ref=f1e42]: الموارد البشرية
+          - button "الموظفين" [ref=f1e43] [cursor=pointer]
+          - button "الحضور" [ref=f1e50] [cursor=pointer]
+          - button "الرواتب" [ref=f1e56] [cursor=pointer]
+          - button "الكتب الرسمية" [ref=f1e61] [cursor=pointer]
+          - button "العهد المالية" [active] [ref=f1e67] [cursor=pointer]
+          - button "العقود" [ref=f1e72] [cursor=pointer]
+          - button "الأوفرتايم" [ref=f1e78] [cursor=pointer]
+        - generic [ref=f1e84]:
+          - generic [ref=f1e85]: المالية
+          - button "الحسابات" [ref=f1e86] [cursor=pointer]
+        - generic [ref=f1e91]:
+          - generic [ref=f1e92]: الإدارة
+          - button "التأشيرات" [ref=f1e93] [cursor=pointer]
+          - button "المهام" [ref=f1e99] [cursor=pointer]
+          - button "التقارير السنوية" [ref=f1e105] [cursor=pointer]
+      - generic [ref=f1e110]:
+        - button "طي القائمة" [ref=f1e111] [cursor=pointer]
+        - button "تسجيل خروج" [ref=f1e115] [cursor=pointer]
+    - generic [ref=f1e119]:
+      - generic [ref=f1e120]:
+        - heading "العهد المالية" [level=1] [ref=f1e228]
+        - generic [ref=f1e122]:
+          - generic [ref=f1e123]: guest_1@sanyacement.com
+          - generic [ref=f1e125]: ضيف 1
+      - generic [ref=f1e229]:
+        - generic [ref=f1e230]:
+          - button "عهد نشطة (3)" [ref=f1e231] [cursor=pointer]
+          - button "عهد مُرجَعة (0)" [ref=f1e232] [cursor=pointer]
+        - generic [ref=f1e233]:
+          - generic [ref=f1e234]:
+            - heading "العهد بحوزة الموظفين" [level=2] [ref=f1e235]
+            - textbox "بحث بالاسم أو العهدة أو الرقم التسلسلي..." [ref=f1e237]
+            - combobox [ref=f1e238]:
+              - option "كل الأنواع" [selected]
+              - option "🚗 سيارة"
+              - option "💻 حاسوب"
+              - option "📱 هاتف"
+              - option "🧰 أدوات ومعدات"
+              - option "📦 أخرى"
+          - table [ref=f1e240]:
+            - rowgroup [ref=f1e241]:
+              - row [ref=f1e242]:
+                - columnheader "الموظف" [ref=f1e243]
+                - columnheader "العهدة" [ref=f1e244]
+                - columnheader "النوع" [ref=f1e245]
+                - columnheader "الرقم التسلسلي" [ref=f1e246]
+                - columnheader "تاريخ الاستلام" [ref=f1e247]
+                - columnheader [ref=f1e248]
+                - columnheader "ملاحظات" [ref=f1e249]
+                - columnheader [ref=f1e250]
+            - rowgroup [ref=f1e251]:
+              - row [ref=f1e252]:
+                - cell "اركان مسلم عبد" [ref=f1e253]
+                - cell "سيارة تيوتا هايلوكس" [ref=f1e254]
+                - cell "🚗 سيارة" [ref=f1e255]
+                - cell "—" [ref=f1e257]
+                - cell "١٠‏/٧‏/٢٠٢٦" [ref=f1e258]
+                - cell [ref=f1e259]
+                - cell "جديده" [ref=f1e260]
+                - cell [ref=f1e261]
+              - row [ref=f1e262]:
+                - cell "فارس ناصر عبد الرزاق" [ref=f1e263]
+                - cell "سيارة تيوتا هايلوكس" [ref=f1e264]
+                - cell "🚗 سيارة" [ref=f1e265]
+                - cell "—" [ref=f1e267]
+                - cell "١٠‏/٧‏/٢٠٢٦" [ref=f1e268]
+                - cell [ref=f1e269]
+                - cell "جديده" [ref=f1e270]
+                - cell [ref=f1e271]
+              - row [ref=f1e272]:
+                - cell "نصر الله فيض الله" [ref=f1e273]
+                - cell "حاسوب لينوفو" [ref=f1e274]
+                - cell "💻 حاسوب" [ref=f1e275]
+                - cell "—" [ref=f1e277]
+                - cell "١٣‏/٦‏/٢٠٢٦" [ref=f1e278]
+                - cell [ref=f1e279]
+                - cell "جديده" [ref=f1e280]
+                - cell [ref=f1e281]
+  - button "Open Next.js Dev Tools" [ref=f1e22] [cursor=pointer]
+  - alert [ref=f1e26]
+  - generic [ref=f1e227]: 0 م

@@ -1,0 +1,53 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - complementary [ref=f1e27]:
+      - generic [ref=f1e29]:
+        - generic [ref=f1e30]: Sanya International
+        - generic [ref=f1e31]: منصة إدارة الشركة
+      - navigation [ref=f1e32]:
+        - button "لوحة المعلومات" [ref=f1e34] [cursor=pointer]
+        - generic [ref=f1e41]:
+          - generic [ref=f1e42]: الموارد البشرية
+          - button "الموظفين" [ref=f1e43] [cursor=pointer]
+          - button "الحضور" [ref=f1e50] [cursor=pointer]
+          - button "الرواتب" [ref=f1e56] [cursor=pointer]
+          - button "الكتب الرسمية" [ref=f1e61] [cursor=pointer]
+          - button "العهد المالية" [ref=f1e67] [cursor=pointer]
+          - button "العقود" [ref=f1e72] [cursor=pointer]
+          - button "الأوفرتايم" [ref=f1e78] [cursor=pointer]
+        - generic [ref=f1e84]:
+          - generic [ref=f1e85]: المالية
+          - button "الحسابات" [ref=f1e86] [cursor=pointer]
+        - generic [ref=f1e91]:
+          - generic [ref=f1e92]: الإدارة
+          - button "التأشيرات" [ref=f1e93] [cursor=pointer]
+          - button "المهام" [ref=f1e99] [cursor=pointer]
+          - button "التقارير السنوية" [ref=f1e105] [cursor=pointer]
+      - generic [ref=f1e110]:
+        - button "طي القائمة" [ref=f1e111] [cursor=pointer]
+        - button "تسجيل خروج" [ref=f1e115] [cursor=pointer]
+    - generic [ref=f1e119]:
+      - generic [ref=f1e120]:
+        - heading "لوحة المعلومات" [level=1] [ref=f1e121]
+        - generic [ref=f1e122]:
+          - generic [ref=f1e123]: guest_1@sanyacement.com
+          - generic [ref=f1e125]: ضيف 1
+      - generic [ref=f1e127]:
+        - generic [ref=f1e128]:
+          - heading "مرحباً بك 👋" [level=2] [ref=f1e129]
+          - paragraph [ref=f1e130]: نظرة عامة سريعة على المنصة — الأربعاء، ١٥ تموز ٢٠٢٦
+        - generic [ref=f1e131]:
+          - button "0 موظف نشط" [ref=f1e132] [cursor=pointer]:
+            - generic [ref=f1e139]:
+              - generic [ref=f1e140]: "0"
+              - generic [ref=f1e141]: موظف نشط
+          - button "0 مهمة غير مكتملة لديك" [ref=f1e142] [cursor=pointer]:
+            - generic [ref=f1e148]:
+              - generic [ref=f1e149]: "0"
+              - generic [ref=f1e150]: مهمة غير مكتملة لديك
+          - button "0 سلفة منخفضة الرصيد" [ref=f1e151] [cursor=pointer]:
+            - generic [ref=f1e156]:
+              - generic [ref=f1e157]: "0"
+              - generic [ref=f1e158]: سلفة منخفضة الرصيد
+  - button "Open Next.js Dev Tools" [ref=f1e22] [cursor=pointer]
+  - alert [ref=f1e26]

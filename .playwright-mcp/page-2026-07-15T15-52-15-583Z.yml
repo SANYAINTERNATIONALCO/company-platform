@@ -1,0 +1,16 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img "Sanya International Company" [ref=e5]
+      - heading "منصة الشركة" [level=1] [ref=e6]
+      - paragraph [ref=e7]: Sanya International Company
+    - generic [ref=e25]: "خطأ: Invalid login credentials"
+    - generic [ref=e8]:
+      - generic [ref=e9]: البريد الإلكتروني
+      - textbox [ref=e10]: guest_1@sanyacement.com
+    - generic [ref=e11]:
+      - generic [ref=e12]: كلمة المرور
+      - textbox [ref=e13]: GH12345
+    - button "تسجيل الدخول" [ref=e14] [cursor=pointer]
+  - button "Open Next.js Dev Tools" [ref=e20] [cursor=pointer]
+  - alert [ref=e24]

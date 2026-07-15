@@ -1,0 +1,46 @@
+- generic [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - complementary [ref=f1e27]:
+      - generic [ref=f1e29]:
+        - generic [ref=f1e30]: Sanya International
+        - generic [ref=f1e31]: منصة إدارة الشركة
+      - navigation [ref=f1e32]:
+        - button "لوحة المعلومات" [ref=f1e34] [cursor=pointer]
+        - generic [ref=f1e41]:
+          - generic [ref=f1e42]: الموارد البشرية
+          - button "الموظفين" [ref=f1e43] [cursor=pointer]
+          - button "الحضور" [ref=f1e50] [cursor=pointer]
+          - button "الرواتب" [ref=f1e56] [cursor=pointer]
+          - button "الكتب الرسمية" [ref=f1e61] [cursor=pointer]
+          - button "العهد المالية" [ref=f1e67] [cursor=pointer]
+          - button "العقود" [active] [ref=f1e72] [cursor=pointer]
+          - button "الأوفرتايم" [ref=f1e78] [cursor=pointer]
+        - generic [ref=f1e84]:
+          - generic [ref=f1e85]: المالية
+          - button "الحسابات" [ref=f1e86] [cursor=pointer]
+        - generic [ref=f1e91]:
+          - generic [ref=f1e92]: الإدارة
+          - button "التأشيرات" [ref=f1e93] [cursor=pointer]
+          - button "المهام" [ref=f1e99] [cursor=pointer]
+          - button "التقارير السنوية" [ref=f1e105] [cursor=pointer]
+      - generic [ref=f1e110]:
+        - button "طي القائمة" [ref=f1e111] [cursor=pointer]
+        - button "تسجيل خروج" [ref=f1e115] [cursor=pointer]
+    - generic [ref=f1e119]:
+      - generic [ref=f1e120]:
+        - heading "العقود" [level=1] [ref=f1e282]
+        - generic [ref=f1e122]:
+          - generic [ref=f1e123]: guest_1@sanyacement.com
+          - generic [ref=f1e125]: ضيف 1
+      - generic [ref=f1e283]:
+        - generic [ref=f1e284]:
+          - button "العقود النشطة (0)" [ref=f1e285] [cursor=pointer]
+          - button "الأرشيف (0)" [ref=f1e286] [cursor=pointer]
+        - generic [ref=f1e287]:
+          - generic [ref=f1e288]:
+            - heading "العقود النشطة" [level=2] [ref=f1e289]
+            - textbox "بحث باسم الموظف..." [ref=f1e291]
+          - generic [ref=f1e292]: لا توجد عقود نشطة — أضف أول عقد
+  - button "Open Next.js Dev Tools" [ref=f1e22] [cursor=pointer]
+  - alert [ref=f1e26]
+  - generic [ref=f1e227]: 0 م
