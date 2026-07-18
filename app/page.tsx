@@ -164,15 +164,16 @@ export default function Home() {
     },
     {
       title: 'الموارد البشرية',
+      // مرتبة حسب دورة حياة الموظف: استقطاب ← سجل ← دوام ← أجور ← وثائق
       items: [
-        { id: 'employees', label: 'الموظفين', icon: 'EMP', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'attendance', label: 'الحضور', icon: 'ATT', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'payroll', label: 'الرواتب', icon: 'PAY', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'documents', label: 'الكتب الرسمية', icon: 'DOC', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'custody', label: 'العهد المالية', icon: 'CUST', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'contracts', label: 'العقود', icon: 'CONT', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'overtime', label: 'الأوفرتايم', icon: 'OT', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'recruitment', label: 'التوظيف', icon: 'RECRUIT', show: ['editor','admin'] },
+        { id: 'employees', label: 'الموظفين', icon: 'EMP', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'contracts', label: 'العقود', icon: 'CONT', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'attendance', label: 'الحضور', icon: 'ATT', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'overtime', label: 'الأوفرتايم', icon: 'OT', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'payroll', label: 'الرواتب', icon: 'PAY', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'custody', label: 'العهد المالية', icon: 'CUST', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'documents', label: 'الكتب الرسمية', icon: 'DOC', show: ['editor','admin','guest_1','guest_2'] },
       ]
     },
     {
@@ -183,9 +184,10 @@ export default function Home() {
     },
     {
       title: 'الإدارة',
+      // اليومي أولاً ثم الدوري ثم السنوي
       items: [
-        { id: 'visa', label: 'التأشيرات', icon: 'VISA', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'tasks', label: 'المهام', icon: 'TASK', show: ['editor','admin','accountant','guest_1','guest_2'] },
+        { id: 'visa', label: 'التأشيرات', icon: 'VISA', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'reports', label: 'التقارير السنوية', icon: 'RPT', show: ['editor','admin','guest_1','guest_2'] },
       ]
     },

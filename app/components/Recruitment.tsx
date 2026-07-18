@@ -77,7 +77,9 @@ const statusTone: Record<string, 'neutral' | 'accent' | 'success' | 'danger' | '
 }
 const rejectionReasons = ['راتب متوقع عالٍ', 'خبرة غير كافية', 'لم يحضر', 'فشل المقابلة', 'شُغلت الوظيفة', 'أخرى']
 const sourceOptions = [
+  { key: 'linkedin', label: 'لينكد إن' },
   { key: 'facebook', label: 'فيسبوك' },
+  { key: 'instagram', label: 'إنستغرام' },
   { key: 'ad', label: 'إعلان' },
   { key: 'referral', label: 'ترشيح موظف' },
   { key: 'network', label: 'معارف' },
