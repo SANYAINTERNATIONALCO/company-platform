@@ -512,6 +512,20 @@ export default function Recruitment({ readOnly = false }: { readOnly?: boolean }
     background: active ? 'var(--color-surface)' : 'transparent', color: active ? 'var(--color-accent)' : 'var(--color-text-muted)',
     boxShadow: active ? 'var(--shadow-xs)' : 'none',
   })
+  // تبويب فرعي بنمط الخط السفلي — تابع بصرياً للتبويب الرئيسي وليس نداً له
+  const subTabStyle = (active: boolean): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 2px', marginBottom: -1,
+    background: 'transparent', border: 'none', cursor: 'pointer',
+    fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)', fontWeight: 'var(--weight-semibold)',
+    color: active ? 'var(--color-accent)' : 'var(--color-text-muted)',
+    borderBottom: active ? '2px solid var(--color-accent)' : '2px solid transparent',
+    transition: 'color var(--duration-fast) var(--ease-standard)',
+  })
+  const subTabCountStyle = (active: boolean): React.CSSProperties => ({
+    fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-bold)', borderRadius: 'var(--radius-full)', padding: '1px 8px',
+    background: active ? 'var(--color-accent-surface)' : 'var(--color-surface-muted)',
+    color: active ? 'var(--color-accent-hover)' : 'var(--color-text-muted)',
+  })
 
   // ================================================================= JSX
   return (
@@ -527,11 +541,17 @@ export default function Recruitment({ readOnly = false }: { readOnly?: boolean }
       {/* ========================== لوحة الوظائف ========================== */}
       {topTab === 'jobs' && !selectedJob && !selectedApplicant && (
         <div>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', alignItems: 'center' }}>
-            <button onClick={() => setJobsTab('open')} style={tabBtnStyle(jobsTab === 'open')}>الوظائف المفتوحة ({jobs.filter(j => j.status === 'open').length})</button>
-            <button onClick={() => setJobsTab('closed')} style={tabBtnStyle(jobsTab === 'closed')}>الوظائف المغلقة ({jobs.filter(j => j.status === 'closed').length})</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-6)', borderBottom: 'var(--border-width-thin) solid var(--color-border)', marginBottom: 'var(--space-4)' }}>
+            <button onClick={() => setJobsTab('open')} style={subTabStyle(jobsTab === 'open')}>
+              المفتوحة
+              <span style={subTabCountStyle(jobsTab === 'open')}>{jobs.filter(j => j.status === 'open').length}</span>
+            </button>
+            <button onClick={() => setJobsTab('closed')} style={subTabStyle(jobsTab === 'closed')}>
+              المغلقة
+              <span style={subTabCountStyle(jobsTab === 'closed')}>{jobs.filter(j => j.status === 'closed').length}</span>
+            </button>
             {!readOnly && (
-              <Button variant="primary" size="md" onClick={() => setShowJobForm(!showJobForm)} style={{ marginInlineStart: 'auto' }}>
+              <Button variant="primary" size="md" onClick={() => setShowJobForm(!showJobForm)} style={{ marginInlineStart: 'auto', marginBottom: 'var(--space-2)' }}>
                 {showJobForm ? 'إلغاء' : '+ وظيفة جديدة'}
               </Button>
             )}
