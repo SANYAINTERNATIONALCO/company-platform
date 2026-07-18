@@ -13,6 +13,7 @@ import Documents from './components/Documents'
 import Custody from './components/Custody'
 import Contracts from './components/Contracts'
 import Overtime from './components/Overtime'
+import Recruitment from './components/Recruitment'
 import Reports from './components/Reports'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { logActivity } from './logActivity'
@@ -171,6 +172,7 @@ export default function Home() {
         { id: 'custody', label: 'العهد المالية', icon: 'CUST', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'contracts', label: 'العقود', icon: 'CONT', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'overtime', label: 'الأوفرتايم', icon: 'OT', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'recruitment', label: 'التوظيف', icon: 'RECRUIT', show: ['editor','admin'] },
       ]
     },
     {
@@ -204,6 +206,7 @@ export default function Home() {
     custody: 'العهد المالية',
     contracts: 'العقود',
     overtime: 'الأوفرتايم',
+    recruitment: 'التوظيف',
     reports: 'التقارير السنوية',
     finance: 'الحسابات',
     visa: 'التأشيرات',
@@ -303,6 +306,13 @@ export default function Home() {
           <circle cx="11" cy="12.5" r="8" stroke={color} strokeWidth="1.8"/>
           <path d="M11 8v4.5l3 2" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           <path d="M17 3.5v4h-4" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ),
+      RECRUIT: (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <circle cx="9.5" cy="8" r="3.5" stroke={color} strokeWidth="1.8"/>
+          <path d="M3.5 20c0-3.6 2.7-6.2 6-6.2s6 2.6 6 6.2" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+          <path d="M18 6.5v5M15.5 9h5" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
         </svg>
       ),
     }
@@ -591,6 +601,7 @@ export default function Home() {
           {activeSection === 'custody' && <Custody readOnly={isReadOnly} />}
           {activeSection === 'contracts' && <Contracts readOnly={isReadOnly} />}
           {activeSection === 'overtime' && <Overtime readOnly={isReadOnly} />}
+          {activeSection === 'recruitment' && <Recruitment readOnly={isReadOnly} />}
           {activeSection === 'reports' && <Reports />}
           {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
           {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
