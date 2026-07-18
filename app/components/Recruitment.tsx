@@ -17,6 +17,8 @@ interface JobOpening {
   status: string
   closed_date: string | null
   created_at: string
+  google_form_url: string | null
+  google_sheet_url: string | null
 }
 
 interface Applicant {
@@ -104,6 +106,61 @@ const scoreCriteria: { key: keyof ApplicantScores; label: string }[] = [
   { key: 'fit', label: 'الملاءمة' },
 ]
 
+// --- استيراد من Google Sheets ---
+interface ImportCandidate {
+  full_name: string
+  phone: string
+  location: string | null
+  nationality: string | null
+  years_experience: number | null
+  languages: string | null
+  expected_salary: number | null
+  source: string
+  statusTag: 'new' | 'duplicate' | 'incomplete'
+}
+type SheetField = 'full_name' | 'phone' | 'location' | 'nationality' | 'years_experience' | 'languages' | 'expected_salary' | 'source' | 'decision'
+const sheetFieldMatchers: { field: SheetField; keywords: string[] }[] = [
+  { field: 'full_name', keywords: ['الاسم'] },
+  { field: 'phone', keywords: ['هاتف', 'موبايل'] },
+  { field: 'location', keywords: ['موقع', 'محافظة', 'مدينة'] },
+  { field: 'nationality', keywords: ['جنسية'] },
+  { field: 'years_experience', keywords: ['خبرة'] },
+  { field: 'languages', keywords: ['لغات'] },
+  { field: 'expected_salary', keywords: ['راتب'] },
+  { field: 'source', keywords: ['سمعت', 'مصدر'] },
+  { field: 'decision', keywords: ['قرار'] },
+]
+function normalizeArabicHeader(s: string) {
+  return s.replace(/[ً-ٰٟ]/g, '').replace(/\s+/g, ' ').trim()
+}
+function matchSheetField(header: string): SheetField | null {
+  const norm = normalizeArabicHeader(header)
+  for (const m of sheetFieldMatchers) {
+    if (m.keywords.some(k => norm.includes(k))) return m.field
+  }
+  return null
+}
+function extractNumber(text: string): number | null {
+  const match = text.replace(/,/g, '').match(/\d+(\.\d+)?/)
+  return match ? parseFloat(match[0]) : null
+}
+function mapSourceValue(text: string): string {
+  if (text.includes('فيس')) return 'facebook'
+  if (text.includes('إعلان')) return 'ad'
+  if (text.includes('ترشيح')) return 'referral'
+  if (text.includes('معارف')) return 'network'
+  return 'other'
+}
+function decisionSelected(raw: string): boolean {
+  if (!raw) return false
+  const cleaned = raw.replace(/✓/g, '').replace(/\s+/g, '')
+  return cleaned.includes('للمنصة')
+}
+function extractSpreadsheetId(url: string): string | null {
+  const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+  return m ? m[1] : null
+}
+
 function today() { return new Date().toISOString().split('T')[0] }
 function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString('ar-IQ') : '—' }
 function waLink(phone: string) {
@@ -161,6 +218,15 @@ export default function Recruitment({ readOnly = false }: { readOnly?: boolean }
 
   const [poolSearch, setPoolSearch] = useState('')
 
+  const [jobLinksForm, setJobLinksForm] = useState({ google_form_url: '', google_sheet_url: '' })
+  const [savingLinks, setSavingLinks] = useState(false)
+  const [copyFeedback, setCopyFeedback] = useState(false)
+  const [showImportPreview, setShowImportPreview] = useState(false)
+  const [importLoading, setImportLoading] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importCandidates, setImportCandidates] = useState<ImportCandidate[]>([])
+  const [importing, setImporting] = useState(false)
+
   useEffect(() => { loadJobs(); loadApplicants() }, [])
 
   async function loadJobs() {
@@ -197,6 +263,12 @@ export default function Recruitment({ readOnly = false }: { readOnly?: boolean }
   }, [applicants])
 
   const filteredJobs = useMemo(() => jobs.filter(j => j.status === jobsTab), [jobs, jobsTab])
+
+  const importCounts = useMemo(() => {
+    const counts = { new: 0, duplicate: 0, incomplete: 0 }
+    importCandidates.forEach(c => { counts[c.statusTag]++ })
+    return counts
+  }, [importCandidates])
 
   const jobApplicants = useMemo(() => {
     if (!selectedJob) return []
@@ -264,6 +336,133 @@ export default function Recruitment({ readOnly = false }: { readOnly?: boolean }
     await logActivity('حذف وظيفة', 'recruitment', `حذف الوظيفة "${job.title}" و${jobApplicantIds.length} مرشح مرتبط بها`)
     setApplicants(prev => prev.filter(a => a.job_id !== job.id))
     setJobs(prev => prev.filter(j => j.id !== job.id))
+  }
+
+  function openJob(job: JobOpening) {
+    setSelectedJob(job)
+    setJobLinksForm({ google_form_url: job.google_form_url || '', google_sheet_url: job.google_sheet_url || '' })
+    setShowImportPreview(false)
+    setImportCandidates([])
+    setImportError(null)
+  }
+
+  async function saveJobLinks() {
+    if (!selectedJob) return
+    setSavingLinks(true)
+    const payload = {
+      google_form_url: jobLinksForm.google_form_url.trim() || null,
+      google_sheet_url: jobLinksForm.google_sheet_url.trim() || null,
+    }
+    const { error } = await supabase.from('job_openings').update(payload).eq('id', selectedJob.id)
+    if (error) alert('خطأ: ' + error.message)
+    else {
+      const updated = { ...selectedJob, ...payload }
+      setSelectedJob(updated)
+      setJobs(prev => prev.map(j => j.id === updated.id ? updated : j))
+    }
+    setSavingLinks(false)
+  }
+
+  async function copyFormLink() {
+    if (!selectedJob?.google_form_url) return
+    await navigator.clipboard.writeText(selectedJob.google_form_url)
+    setCopyFeedback(true)
+    setTimeout(() => setCopyFeedback(false), 1500)
+  }
+
+  async function fetchImportPreview() {
+    if (!selectedJob?.google_sheet_url) return
+    setImportError(null)
+    setImportLoading(true)
+    setImportCandidates([])
+    setShowImportPreview(false)
+    try {
+      const spreadsheetId = extractSpreadsheetId(selectedJob.google_sheet_url)
+      if (!spreadsheetId) { setImportError('رابط الشيت غير صحيح أو الملف محذوف'); setImportLoading(false); return }
+      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_API_KEY
+      if (!apiKey) { setImportError('لم يتم إعداد مفتاح Google Sheets API — راجع إعدادات المنصة'); setImportLoading(false); return }
+      const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:Z?key=${apiKey}`)
+      if (res.status === 403) { setImportError('الشيت غير مشارك للقراءة العامة — افتح الشيت ← مشاركة ← أي شخص لديه الرابط ← مُشاهد'); setImportLoading(false); return }
+      if (res.status === 404) { setImportError('رابط الشيت غير صحيح أو الملف محذوف'); setImportLoading(false); return }
+      if (!res.ok) { setImportError('تعذر الاتصال بـ Google Sheets (خطأ ' + res.status + ')'); setImportLoading(false); return }
+      const data = await res.json()
+      const rows: string[][] = data.values || []
+      if (rows.length < 2) { setImportError('لا يوجد مرشحون بعلامة (✓ للمنصة) في الشيت'); setImportLoading(false); return }
+
+      const headers = rows[0]
+      const fieldIndex: Partial<Record<SheetField, number>> = {}
+      headers.forEach((h, i) => {
+        const field = matchSheetField(h || '')
+        if (field && !(field in fieldIndex)) fieldIndex[field] = i
+      })
+      if (fieldIndex.decision === undefined) {
+        setImportError('يجب إضافة عمود اسمه "القرار" في الشيت لتحديد المرشحين المطلوب استيرادهم')
+        setImportLoading(false)
+        return
+      }
+
+      const existingPhones = new Set(applicants.filter(a => a.job_id === selectedJob.id).map(a => a.phone.trim()))
+      const seenPhones = new Set<string>()
+      const results: ImportCandidate[] = []
+
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r]
+        const decisionVal = row[fieldIndex.decision] || ''
+        if (!decisionSelected(decisionVal)) continue
+        const full_name = (fieldIndex.full_name !== undefined ? (row[fieldIndex.full_name] || '') : '').trim()
+        const phone = (fieldIndex.phone !== undefined ? (row[fieldIndex.phone] || '') : '').trim()
+        const location = fieldIndex.location !== undefined ? (row[fieldIndex.location] || '').trim() || null : null
+        const nationality = fieldIndex.nationality !== undefined ? (row[fieldIndex.nationality] || '').trim() || null : null
+        const years_experience = fieldIndex.years_experience !== undefined ? extractNumber(row[fieldIndex.years_experience] || '') : null
+        const languages = fieldIndex.languages !== undefined ? (row[fieldIndex.languages] || '').trim() || null : null
+        const expected_salary = fieldIndex.expected_salary !== undefined ? extractNumber(row[fieldIndex.expected_salary] || '') : null
+        const source = fieldIndex.source !== undefined ? mapSourceValue(row[fieldIndex.source] || '') : 'other'
+
+        let statusTag: ImportCandidate['statusTag'] = 'new'
+        if (!full_name || !phone) statusTag = 'incomplete'
+        else if (existingPhones.has(phone) || seenPhones.has(phone)) statusTag = 'duplicate'
+        if (statusTag !== 'incomplete') seenPhones.add(phone)
+
+        results.push({ full_name, phone, location, nationality, years_experience, languages, expected_salary, source, statusTag })
+      }
+
+      if (results.length === 0) { setImportError('لا يوجد مرشحون بعلامة (✓ للمنصة) في الشيت'); setImportLoading(false); return }
+
+      setImportCandidates(results)
+      setShowImportPreview(true)
+    } catch {
+      setImportError('تعذر الاتصال بـ Google Sheets — تحقق من الاتصال بالإنترنت')
+    }
+    setImportLoading(false)
+  }
+
+  async function confirmImport() {
+    if (!selectedJob) return
+    const toInsert = importCandidates.filter(c => c.statusTag === 'new')
+    if (toInsert.length === 0) { setShowImportPreview(false); return }
+    setImporting(true)
+    const payload = toInsert.map(c => ({
+      job_id: selectedJob.id,
+      full_name: c.full_name,
+      phone: c.phone,
+      source: c.source,
+      years_experience: c.years_experience,
+      languages: c.languages,
+      location: c.location,
+      nationality: c.nationality,
+      expected_salary: c.expected_salary,
+      status: 'shortlist',
+      in_talent_pool: false,
+    }))
+    const { error } = await supabase.from('applicants').insert(payload)
+    if (error) { alert('خطأ: ' + error.message); setImporting(false); return }
+    const skipped = importCandidates.length - toInsert.length
+    await logActivity('استيراد مرشحين', 'recruitment', `استيراد ${toInsert.length} مرشح للوظيفة: ${selectedJob.title}`)
+    await loadApplicants()
+    setShowImportPreview(false)
+    setImportCandidates([])
+    setImporting(false)
+    alert(`تم استيراد ${toInsert.length} مرشح بنجاح (تم تخطي ${skipped})`)
   }
 
   // --- المرشحون ---
@@ -584,7 +783,7 @@ export default function Recruitment({ readOnly = false }: { readOnly?: boolean }
                 const counts = jobCounts[job.id] || {}
                 return (
                   <Card key={job.id}>
-                    <div style={{ padding: 'var(--space-5)', cursor: 'pointer' }} onClick={() => setSelectedJob(job)}>
+                    <div style={{ padding: 'var(--space-5)', cursor: 'pointer' }} onClick={() => openJob(job)}>
                       <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', color: 'var(--color-text)', marginBottom: 4 }}>{job.title}</div>
                       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', marginBottom: 10 }}>{job.department} — فُتحت {fmtDate(job.opened_date)}</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -662,6 +861,81 @@ export default function Recruitment({ readOnly = false }: { readOnly?: boolean }
               )}
             </div>
           </div>
+
+          {!readOnly && (
+            <Card style={{ marginBottom: 'var(--space-4)' }}>
+              <div className="ui-card__header">
+                <h3 className="ui-card__title" style={{ fontSize: 'var(--text-md)' }}>روابط التقديم والاستيراد</h3>
+              </div>
+              <div style={{ padding: 'var(--space-5)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+                  <Input label="رابط نموذج التقديم" value={jobLinksForm.google_form_url}
+                    onChange={e => setJobLinksForm({ ...jobLinksForm, google_form_url: e.target.value })}
+                    placeholder="https://forms.gle/..." style={{ direction: 'ltr' }} />
+                  <Input label="رابط شيت الإجابات" value={jobLinksForm.google_sheet_url}
+                    onChange={e => setJobLinksForm({ ...jobLinksForm, google_sheet_url: e.target.value })}
+                    placeholder="https://docs.google.com/spreadsheets/d/..." style={{ direction: 'ltr' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <Button variant="success" size="sm" onClick={saveJobLinks} disabled={savingLinks}>
+                    {savingLinks ? 'جارٍ الحفظ...' : 'حفظ الروابط'}
+                  </Button>
+                  {selectedJob.google_form_url && (
+                    <Button variant="secondary" size="sm" onClick={copyFormLink}>
+                      {copyFeedback ? 'تم النسخ ✓' : 'نسخ رابط النموذج'}
+                    </Button>
+                  )}
+                  {selectedJob.google_sheet_url && (
+                    <Button variant="accent-soft" size="sm" onClick={fetchImportPreview} disabled={importLoading}>
+                      {importLoading ? 'جارٍ التحميل...' : 'معاينة المختارين'}
+                    </Button>
+                  )}
+                </div>
+                {importError && <div style={{ marginTop: 8, fontSize: 'var(--text-xs)', color: 'var(--color-danger)' }}>{importError}</div>}
+              </div>
+            </Card>
+          )}
+
+          {showImportPreview && (
+            <Card style={{ marginBottom: 'var(--space-4)' }}>
+              <div className="ui-card__header">
+                <h3 className="ui-card__title" style={{ fontSize: 'var(--text-md)' }}>معاينة الاستيراد من Google Sheets</h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowImportPreview(false)}>إغلاق ✕</Button>
+              </div>
+              <div style={{ padding: '12px 20px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Badge tone="success">{importCounts.new} جاهز للاستيراد</Badge>
+                <Badge tone="neutral">{importCounts.duplicate} مكرر</Badge>
+                <Badge tone="danger">{importCounts.incomplete} ناقص</Badge>
+              </div>
+              <Table>
+                <thead>
+                  <tr>{['الاسم', 'الهاتف', 'الخبرة', 'الراتب المتوقع', 'الموقع', 'الحالة'].map((h, i) => <Table.Th key={i}>{h}</Table.Th>)}</tr>
+                </thead>
+                <tbody>
+                  {importCandidates.map((c, i) => (
+                    <tr key={i}>
+                      <Table.Td style={{ fontWeight: 'var(--weight-semibold)' }}>{c.full_name || '—'}</Table.Td>
+                      <Table.Td style={{ direction: 'ltr', textAlign: 'right' }}>{c.phone || '—'}</Table.Td>
+                      <Table.Td>{c.years_experience != null ? `${c.years_experience} سنة` : '—'}</Table.Td>
+                      <Table.Td className="ui-table__numeric">{c.expected_salary ? c.expected_salary.toLocaleString('ar-IQ') : '—'}</Table.Td>
+                      <Table.Td>{c.location || '—'}</Table.Td>
+                      <Table.Td>
+                        {c.statusTag === 'new' && <Badge tone="success" size="sm">جديد</Badge>}
+                        {c.statusTag === 'duplicate' && <Badge tone="neutral" size="sm">مكرر</Badge>}
+                        {c.statusTag === 'incomplete' && <Badge tone="danger" size="sm">ناقص</Badge>}
+                      </Table.Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+              <div style={{ padding: '12px 20px', display: 'flex', gap: 8 }}>
+                <Button variant="success" size="md" disabled={importing || importCounts.new === 0} onClick={confirmImport}>
+                  {importing ? 'جارٍ الاستيراد...' : `تأكيد الاستيراد (${importCounts.new})`}
+                </Button>
+                <Button variant="secondary" size="md" onClick={() => setShowImportPreview(false)}>إلغاء</Button>
+              </div>
+            </Card>
+          )}
 
           {showCompare && selectedIds.size >= 2 && (
             <Card style={{ marginBottom: 'var(--space-4)' }}>
