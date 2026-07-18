@@ -242,6 +242,28 @@ export default function Recruitment({ readOnly = false }: { readOnly?: boolean }
     await loadJobs()
   }
 
+  async function deleteJob(job: JobOpening) {
+    const jobApplicantIds = applicants.filter(a => a.job_id === job.id).map(a => a.id)
+    const msg = jobApplicantIds.length > 0
+      ? `تأكيد حذف الوظيفة "${job.title}" نهائياً؟ سيتم حذف جميع مرشحيها (${jobApplicantIds.length}) وملاحظاتهم وملفاتهم بشكل نهائي ولا يمكن التراجع عن هذا.`
+      : `تأكيد حذف الوظيفة "${job.title}" نهائياً؟`
+    if (!confirm(msg)) return
+    if (jobApplicantIds.length > 0) {
+      const { data: filesData } = await supabase.from('applicant_files').select('*').in('applicant_id', jobApplicantIds)
+      for (const f of ((filesData as ApplicantFile[]) || [])) {
+        const path = f.file_url.split('/').pop()
+        if (path) await supabase.storage.from('applicant-files').remove([path])
+      }
+      await supabase.from('applicant_files').delete().in('applicant_id', jobApplicantIds)
+      await supabase.from('applicant_notes').delete().in('applicant_id', jobApplicantIds)
+      await supabase.from('applicants').delete().in('id', jobApplicantIds)
+    }
+    await supabase.from('job_openings').delete().eq('id', job.id)
+    await logActivity('حذف وظيفة', 'recruitment', `حذف الوظيفة "${job.title}" و${jobApplicantIds.length} مرشح مرتبط بها`)
+    setApplicants(prev => prev.filter(a => a.job_id !== job.id))
+    setJobs(prev => prev.filter(j => j.id !== job.id))
+  }
+
   // --- المرشحون ---
   async function checkPhoneDuplicate(phone: string) {
     if (!phone.trim()) { setPhoneWarning(null); return }
@@ -553,6 +575,11 @@ export default function Recruitment({ readOnly = false }: { readOnly?: boolean }
                     {jobsTab === 'open' && !readOnly && (
                       <div style={{ padding: '0 var(--space-5) var(--space-4)' }}>
                         <Button variant="secondary" size="sm" onClick={() => closeJob(job)}>إغلاق الوظيفة</Button>
+                      </div>
+                    )}
+                    {jobsTab === 'closed' && !readOnly && (
+                      <div style={{ padding: '0 var(--space-5) var(--space-4)' }}>
+                        <Button variant="danger" size="sm" onClick={() => deleteJob(job)}>حذف الوظيفة نهائياً</Button>
                       </div>
                     )}
                   </Card>
