@@ -15,6 +15,7 @@ import Contracts from './components/Contracts'
 import Overtime from './components/Overtime'
 import Recruitment from './components/Recruitment'
 import Fingerprint from './components/Fingerprint'
+import Users from './components/Users'
 import Reports from './components/Reports'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { logActivity } from './logActivity'
@@ -210,6 +211,7 @@ export default function Home() {
     {
       title: 'النظام',
       items: [
+        { id: 'users', label: 'إدارة المستخدمين', icon: 'USERS' },
         { id: 'activity_log', label: 'سجل النشاطات', icon: 'LOG' },
       ]
     },
@@ -231,6 +233,7 @@ export default function Home() {
     visa: 'التأشيرات',
     tasks: 'المهام',
     activity_log: 'سجل النشاطات',
+    users: 'إدارة المستخدمين',
   }
 
   const iconSvg = (type: string, color: string, size: number = 20) => {
@@ -334,6 +337,15 @@ export default function Home() {
           <path d="M8.5 10a3.5 3.5 0 017 0v2.5c0 3-1 5.5-2.7 7.5" stroke={color} strokeWidth="1.7" strokeLinecap="round"/>
           <path d="M12 10v3c0 3.2-.9 5.9-2.4 8" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
           <path d="M15 10.2V13c0 1.6-.2 3-.6 4.3" stroke={color} strokeWidth="1.6" strokeLinecap="round" opacity="0.7"/>
+        </svg>
+      ),
+      USERS: (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <circle cx="8.5" cy="7.5" r="3" stroke={color} strokeWidth="1.8"/>
+          <path d="M2.8 19c0-3.1 2.5-5.6 5.7-5.6s5.7 2.5 5.7 5.6" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+          <circle cx="16.5" cy="8.5" r="2.3" stroke={color} strokeWidth="1.6"/>
+          <path d="M14.5 19c.1-2.5 1.9-4.4 4-4.4.6 0 1.2.15 1.7.4" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+          <path d="M18.5 3.5v3.4M20.2 5.2h-3.4" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
         </svg>
       ),
       RECRUIT: (
@@ -644,6 +656,7 @@ export default function Home() {
           {activeSection === 'recruitment' && <Recruitment readOnly={!canEdit(perms, 'recruitment')} />}
           {activeSection === 'reports' && <Reports />}
           {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
+          {activeSection === 'users' && userRole === 'editor' && user && <Users currentUserId={user.id} />}
           {activeSection === 'employees' && <Employees readOnly={!canEdit(perms, 'employees')} />}
           {activeSection === 'attendance' && <Attendance readOnly={!canEdit(perms, 'attendance')} userRole={userRole || ''} />}
           {activeSection === 'fingerprint' && <Fingerprint readOnly={!canEdit(perms, 'fingerprint')} />}
