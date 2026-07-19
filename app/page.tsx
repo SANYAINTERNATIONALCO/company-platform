@@ -19,6 +19,7 @@ import Reports from './components/Reports'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { logActivity } from './logActivity'
 import { Button, Input, Badge } from './ui'
+import { EDITOR_ONLY, resolvePermissions, canView, canEdit, type Permissions } from './lib/permissions'
 
 const supabase = createClient(
   'https://idsedrnuopflzepasmvc.supabase.co',
@@ -34,6 +35,9 @@ export default function Home() {
   const [error, setError] = useState('')
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [perms, setPerms] = useState<Permissions>({})
+  const [displayName, setDisplayName] = useState('')
+  const [isActive, setIsActive] = useState<boolean | null>(null)
   const [activeSection, setActiveSection] = useState<string>('dashboard')
   const [financeTab, setFinanceTab] = useState<'expenses' | 'receipts'>('expenses')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -142,61 +146,71 @@ export default function Home() {
     await supabase.auth.signOut()
     setUser(null)
     setUserRole(null)
+    setPerms({})
+    setDisplayName('')
+    setIsActive(null)
     setActiveSection('dashboard')
   }
 
   async function loadRole() {
     if (!user) return
-    const { data } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single()
-    if (data) setUserRole(data.role)
-    else setUserRole('viewer')
+    const { data } = await supabase.from('user_roles').select('role, permissions, display_name, is_active').eq('user_id', user.id).single()
+    if (data) {
+      setUserRole(data.role)
+      setPerms(resolvePermissions(data.role, data.permissions))
+      setDisplayName(data.display_name || '')
+      setIsActive(data.is_active !== false)
+    } else {
+      setUserRole('viewer')
+      setPerms(resolvePermissions('viewer', null))
+      setIsActive(true)
+    }
   }
 
-  const isReadOnly = ['admin', 'guest_1', 'guest_2'].includes(userRole || '')
   const roleLabel: Record<string, string> = { editor: 'محرر', admin: 'مدير', accountant: 'محاسب', guest_1: 'ضيف 1', guest_2: 'ضيف 2' }
 
-  // مجموعات الشريط الجانبي
+  // مجموعات الشريط الجانبي — الظهور محسوب عبر canView(perms, id) عدا dashboard (دائماً ظاهر) وEDITOR_ONLY (role==='editor' حصراً)
   const navGroups = [
     {
       title: '',
       items: [
-        { id: 'dashboard', label: 'لوحة المعلومات', icon: 'DASH', show: ['editor','admin','accountant','guest_1','guest_2'] },
+        { id: 'dashboard', label: 'لوحة المعلومات', icon: 'DASH' },
       ]
     },
     {
       title: 'الموارد البشرية',
       // مرتبة حسب دورة حياة الموظف: استقطاب ← سجل ← دوام ← أجور ← وثائق
       items: [
-        { id: 'recruitment', label: 'التوظيف', icon: 'RECRUIT', show: ['editor','admin'] },
-        { id: 'employees', label: 'الموظفين', icon: 'EMP', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'contracts', label: 'العقود', icon: 'CONT', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'attendance', label: 'الحضور', icon: 'ATT', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'fingerprint', label: 'تقارير البصمة', icon: 'FP', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'overtime', label: 'الأوفرتايم', icon: 'OT', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'payroll', label: 'الرواتب', icon: 'PAY', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'custody', label: 'العهد المالية', icon: 'CUST', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'documents', label: 'الكتب الرسمية', icon: 'DOC', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'recruitment', label: 'التوظيف', icon: 'RECRUIT' },
+        { id: 'employees', label: 'الموظفين', icon: 'EMP' },
+        { id: 'contracts', label: 'العقود', icon: 'CONT' },
+        { id: 'attendance', label: 'الحضور', icon: 'ATT' },
+        { id: 'fingerprint', label: 'تقارير البصمة', icon: 'FP' },
+        { id: 'overtime', label: 'الأوفرتايم', icon: 'OT' },
+        { id: 'payroll', label: 'الرواتب', icon: 'PAY' },
+        { id: 'custody', label: 'العهد المالية', icon: 'CUST' },
+        { id: 'documents', label: 'الكتب الرسمية', icon: 'DOC' },
       ]
     },
     {
       title: 'المالية',
       items: [
-        { id: 'finance', label: 'الحسابات', icon: 'FIN', show: ['editor','admin','accountant','guest_1','guest_2'] },
+        { id: 'finance', label: 'الحسابات', icon: 'FIN' },
       ]
     },
     {
       title: 'الإدارة',
       // اليومي أولاً ثم الدوري ثم السنوي
       items: [
-        { id: 'tasks', label: 'المهام', icon: 'TASK', show: ['editor','admin','accountant','guest_1','guest_2'] },
-        { id: 'visa', label: 'التأشيرات', icon: 'VISA', show: ['editor','admin','guest_1','guest_2'] },
-        { id: 'reports', label: 'التقارير السنوية', icon: 'RPT', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'tasks', label: 'المهام', icon: 'TASK' },
+        { id: 'visa', label: 'التأشيرات', icon: 'VISA' },
+        { id: 'reports', label: 'التقارير السنوية', icon: 'RPT' },
       ]
     },
     {
       title: 'النظام',
       items: [
-        { id: 'activity_log', label: 'سجل النشاطات', icon: 'LOG', show: ['editor'] },
+        { id: 'activity_log', label: 'سجل النشاطات', icon: 'LOG' },
       ]
     },
   ]
@@ -377,6 +391,13 @@ export default function Home() {
     </div>
   )
 
+  if (isActive === false) return (
+    <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'var(--color-canvas)',gap:16,padding:20,textAlign:'center'}}>
+      <div style={{fontSize:'var(--text-lg)',fontWeight:'var(--weight-bold)',color:'var(--color-danger)'}}>هذا الحساب معطّل — راجع مدير النظام</div>
+      <Button variant="secondary" size="md" onClick={logout}>تسجيل خروج</Button>
+    </div>
+  )
+
   const sidebarWidth = sidebarCollapsed ? 72 : 240
 
   return (
@@ -400,7 +421,11 @@ export default function Home() {
         {/* القوائم */}
         <nav style={{flex:1,overflowY:'auto',padding:'12px 8px'}}>
           {navGroups.map((group, gi) => {
-            const visibleItems = group.items.filter(item => item.show.includes(userRole || ''))
+            const visibleItems = group.items.filter(item => {
+              if (item.id === 'dashboard') return true
+              if (EDITOR_ONLY.includes(item.id)) return userRole === 'editor'
+              return canView(perms, item.id)
+            })
             if (visibleItems.length === 0) return null
             return (
               <div key={gi} style={{marginBottom:14}}>
@@ -468,7 +493,8 @@ export default function Home() {
           <h1 style={{margin:0,fontSize:'var(--text-lg)',fontWeight:'var(--weight-bold)',color:'var(--color-text)'}}>{sectionTitles[activeSection] || ''}</h1>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <div style={{textAlign:'left'}}>
-              <div style={{fontSize:'var(--text-xs)',fontWeight:'var(--weight-semibold)',color:'var(--color-text-secondary)',direction:'ltr'}}>{user.email}</div>
+              {displayName && <div style={{fontSize:'var(--text-xs)',fontWeight:'var(--weight-semibold)',color:'var(--color-text)',direction:'rtl'}}>{displayName}</div>}
+              <div style={{fontSize:'var(--text-2xs)',fontWeight:'var(--weight-medium)',color:'var(--color-text-muted)',direction:'ltr'}}>{user.email}</div>
             </div>
             <Badge tone="accent">{roleLabel[userRole] || userRole}</Badge>
           </div>
@@ -609,20 +635,20 @@ export default function Home() {
 
           {/* الأقسام */}
           {activeSection === 'tasks' && user && userRole && (
-            <Tasks currentUserId={user.id} currentUserRole={userRole} currentUserEmail={user.email || ''} />
+            <Tasks currentUserId={user.id} currentUserRole={userRole} currentUserEmail={user.email || ''} canEditTasks={canEdit(perms, 'tasks')} />
           )}
-          {activeSection === 'documents' && <Documents readOnly={isReadOnly} />}
-          {activeSection === 'custody' && <Custody readOnly={isReadOnly} />}
-          {activeSection === 'contracts' && <Contracts readOnly={isReadOnly} />}
-          {activeSection === 'overtime' && <Overtime readOnly={isReadOnly} />}
-          {activeSection === 'recruitment' && <Recruitment readOnly={isReadOnly} />}
+          {activeSection === 'documents' && <Documents readOnly={!canEdit(perms, 'documents')} />}
+          {activeSection === 'custody' && <Custody readOnly={!canEdit(perms, 'custody')} />}
+          {activeSection === 'contracts' && <Contracts readOnly={!canEdit(perms, 'contracts')} />}
+          {activeSection === 'overtime' && <Overtime readOnly={!canEdit(perms, 'overtime')} />}
+          {activeSection === 'recruitment' && <Recruitment readOnly={!canEdit(perms, 'recruitment')} />}
           {activeSection === 'reports' && <Reports />}
           {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
-          {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
-          {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} userRole={userRole || ''} />}
-          {activeSection === 'fingerprint' && <Fingerprint readOnly={isReadOnly} />}
-          {activeSection === 'visa' && <Visa readOnly={isReadOnly} />}
-          {activeSection === 'payroll' && <Payroll readOnly={isReadOnly} userRole={userRole || ''} />}
+          {activeSection === 'employees' && <Employees readOnly={!canEdit(perms, 'employees')} />}
+          {activeSection === 'attendance' && <Attendance readOnly={!canEdit(perms, 'attendance')} userRole={userRole || ''} />}
+          {activeSection === 'fingerprint' && <Fingerprint readOnly={!canEdit(perms, 'fingerprint')} />}
+          {activeSection === 'visa' && <Visa readOnly={!canEdit(perms, 'visa')} />}
+          {activeSection === 'payroll' && <Payroll readOnly={!canEdit(perms, 'payroll')} userRole={userRole || ''} />}
 
           {/* قسم الحسابات: مصاريف + وصولات */}
           {activeSection === 'finance' && (
@@ -641,8 +667,8 @@ export default function Home() {
                   الوصولات
                 </button>
               </div>
-              {financeTab === 'expenses' && <Finance readOnly={isReadOnly} />}
-              {financeTab === 'receipts' && <Receipts readOnly={isReadOnly} />}
+              {financeTab === 'expenses' && <Finance readOnly={!canEdit(perms, 'finance')} />}
+              {financeTab === 'receipts' && <Receipts readOnly={!canEdit(perms, 'finance')} />}
             </div>
           )}
         </div>

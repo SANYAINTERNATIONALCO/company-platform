@@ -30,11 +30,14 @@
 7. عند تعديل `app/api/pdf/route.ts`: لا تُرجع نص زخرفي صغير (مثل "تم إنشاء بواسطة...") داخل `signatureHtml` مباشرة بعد صندوق التوقيع — ولو ببضع بكسلات، جُرّب سابقاً وكان يكفي لدفع كامل التوقيع لصفحة PDF زائدة فارغة تقريباً. `next.config.ts` يحتاج `outputFileTracingIncludes` صريح لمجلد `@sparticuz/chromium/bin` وإلا يفشل التوليد على Vercel بخطأ "input directory does not exist" (تتبّع الملفات بـNext ما يلتقط أصول الحزمة المحمّلة ديناميكياً تلقائياً)
 
 ## الأدوار والصلاحيات
-- `editor` (حسن): كل شيء
-- `admin` (مدير الموقع): قراءة فقط + رفع توقيعه فقط في الرواتب والموقف الشهري + رؤية كل المهام + طباعة الكتب المحفوظة
-- `accountant`: الحسابات + المهام فقط
-- `guest_1` / `guest_2`: قراءة فقط لكل شيء
-- النمط: `isReadOnly = ['admin','guest_1','guest_2'].includes(userRole)` في page.tsx، وتمرير `readOnly` prop للمكونات (استثناء: Payroll وAttendance يستلمان `userRole` أيضاً، وTasks يستلم بيانات المستخدم)
+نظام صلاحيات مرن — لكل مستخدم صلاحية مستقلة لكل قسم بثلاثة مستويات (`none`/`read`/`edit`)، منطقه في `app/lib/permissions.ts`. الأدوار (`role` في `user_roles`) صارت قوالب تعبئة سريعة فقط (`PRESETS`)، وليست هي مصدر الصلاحية الفعلي:
+- `resolvePermissions(role, permissions)`: عمود `user_roles.permissions` (JSONB) هو المصدر الفعلي إن وُجد؛ إذا كان فارغاً (`null` أو `{}`) يُستخدم قالب الدور (`PRESETS[role]`) — هذا ما يجعل كل المستخدمين الحاليين (الذين `permissions` عندهم `null`) يعملون بلا أي تغيير سلوكي رغم إعادة الكتابة الكاملة للنظام
+- `SECTIONS`: 13 قسماً قابلاً للصلاحية (يشمل `overtime` رغم أنه لم يُذكر صراحة في مواصفة الأقسام الأصلية — أُضيف لأن له عنصر تنقّل مستقلاً بنفس نمط رؤية `attendance`/`contracts`)
+- `PRESETS`: `editor` = الكل `edit`؛ `admin` = الكل `read` **عدا `tasks: 'edit'`** (استثناء متعمد ليحتفظ المدير بقدرته الحالية على إنشاء/تكليف المهام)؛ `accountant` = `finance:edit، tasks:edit`، البقية `none`؛ `guest_1`/`guest_2` = الكل `read` (**يشمل التوظيف/recruitment** الآن — كان مخفياً تماماً عن الضيوف قبل هذا النظام، تغيير متعمد بطلب صريح)
+- `canView(perms, section)` / `canEdit(perms, section)`: تُستخدمان في `page.tsx` لتصفية الشريط الجانبي (`canView`) وحساب `readOnly` لكل قسم على حدة (`!canEdit`) بدل متغيّر `isReadOnly` العام السابق
+- `EDITOR_ONLY = ['activity_log','users']`: تتحقق من `role === 'editor'` حصراً ولا تدخل نظام الصلاحيات إطلاقاً (لا صفحة إدارة مستخدمين بعد — قسم `users` معرّف مسبقاً للمرحلة القادمة)
+- `is_active = false` في `user_roles` يمنع الدخول برسالة "هذا الحساب معطّل"
+- استثناءات لا تدخل نظام الصلاحيات: Payroll وAttendance يستلمان `userRole` الحرفي أيضاً (منطق توقيع admin مرتبط بالهوية لا بالصلاحية)؛ Tasks تستلم `canEditTasks` (= `canEdit(perms,'tasks')`) وتبني قائمة المستخدمين القابلين للتكليف من `user_roles` حيث `is_active=true` (بدل قائمة كانت مكتوبة يدوياً) — أي مستخدم `tasks:edit` يكلّف أي مستخدم نشط، و`tasks:read` يرى فقط
 
 ## قواعد العمل (Business Rules)
 - الرواتب: يُخصم الغياب فقط (اليوم = الراتب÷30)، كل الإجازات مدفوعة

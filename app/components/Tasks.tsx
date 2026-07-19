@@ -25,7 +25,6 @@ interface Task {
 
 interface AssignableUser {
   id: string
-  email: string
   role: string
   displayName: string
 }
@@ -42,7 +41,7 @@ const statusInfo: Record<string,{label:string,bg:string,color:string}> = {
   completed: { label: 'مكتملة', bg: '#dcfce7', color: '#15803d' },
 }
 
-export default function Tasks({ currentUserId, currentUserRole, currentUserEmail }: { currentUserId: string; currentUserRole: string; currentUserEmail: string }) {
+export default function Tasks({ currentUserId, currentUserRole, currentUserEmail, canEditTasks }: { currentUserId: string; currentUserRole: string; currentUserEmail: string; canEditTasks: boolean }) {
   const [activeTab, setActiveTab] = useState<'my' | 'created' | 'all'>('my')
   const [myTasks, setMyTasks] = useState<Task[]>([])
   const [createdTasks, setCreatedTasks] = useState<Task[]>([])
@@ -61,13 +60,11 @@ export default function Tasks({ currentUserId, currentUserRole, currentUserEmail
   }, [])
 
   async function loadAllUsers() {
-    // قائمة المستخدمين معروفة مسبقاً (3 أدوار فقط في المنصة)
-    const knownUsers: AssignableUser[] = [
-      { id: '3a216261-8365-45eb-b5e8-0b80d62a0548', email: 'site.manager@sanyacement.com', role: 'admin', displayName: 'مدير الموقع' },
-      { id: 'cf49f69b-15d1-47cb-8aed-1a682f76b46d', email: 'hr@sanyacement.com', role: 'editor', displayName: 'مدير الموارد البشرية' },
-      { id: '3949f2ac-9312-4acb-91e7-cc8447654c90', email: 'husseinsattar651@gmail.com', role: 'accountant', displayName: 'المحاسب' },
-    ]
-    setAllUsers(knownUsers)
+    const { data } = await supabase.from('user_roles').select('user_id, role, display_name').eq('is_active', true)
+    const users: AssignableUser[] = (data || []).map((u: { user_id: string; role: string; display_name: string | null }) => ({
+      id: u.user_id, role: u.role, displayName: u.display_name || roleLabel[u.role] || u.role,
+    }))
+    setAllUsers(users)
   }
 
   async function loadMyTasks() {
@@ -87,14 +84,10 @@ export default function Tasks({ currentUserId, currentUserRole, currentUserEmail
     setAllTasks((data as Task[]) || [])
   }
 
-  // من يقدر هذا المستخدم يكلّف حسب الهرمية
-  const assignableUsers = useMemo(() => {
-    if (currentUserRole === 'admin') return allUsers.filter(u => u.id !== currentUserId)
-    if (currentUserRole === 'editor') return allUsers.filter(u => u.role === 'accountant')
-    return [] // المحاسب لا يكلّف أحداً
-  }, [allUsers, currentUserRole, currentUserId])
+  // من لديه صلاحية tasks=edit يكلّف أي مستخدم نشط (عدا نفسه)
+  const assignableUsers = useMemo(() => canEditTasks ? allUsers.filter(u => u.id !== currentUserId) : [], [allUsers, canEditTasks, currentUserId])
 
-  const canCreateTasks = assignableUsers.length > 0
+  const canCreateTasks = canEditTasks
   const canSeeAll = ['editor', 'admin', 'guest_1', 'guest_2'].includes(currentUserRole)
 
   async function createTask() {
