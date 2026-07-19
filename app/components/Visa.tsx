@@ -1,6 +1,7 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import * as XLSX from 'xlsx'
 import { logActivity } from '../logActivity'
 
 const supabase = createClient(
@@ -68,6 +69,20 @@ interface VisaCycle {
   created_at: string
 }
 
+type BatchVisaType = 'tourist' | 'annual'
+interface BatchRow { full_name: string; passport_number: string }
+interface ExcelImportRow {
+  full_name: string
+  passport_number: string
+  nationality: string
+  entry_date: string
+  visa_duration: string
+  statusTag: 'new' | 'duplicate' | 'incomplete'
+}
+function normalizeHeaderText(s: string) {
+  return s.replace(/[ً-ٰٟ]/g, '').replace(/\s+/g, ' ').trim()
+}
+
 const categories = [
   { key: 'total', label: 'إجمالي الأجانب', icon: '👥', color: '#1e40af', bg: '#dbeafe' },
   { key: 'multiple_visa', label: 'حاصلون على فيزا متعددة', icon: '✅', color: '#15803d', bg: '#dcfce7' },
@@ -82,7 +97,7 @@ const nationalities = [
 ]
 
 export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
-  const [activeTab, setActiveTab] = useState<'stats' | 'tourist' | 'annual' | 'cycles'>('stats')
+  const [activeTab, setActiveTab] = useState<'stats' | 'tourist' | 'annual' | 'cycles' | 'batch'>('stats')
   const [stats, setStats] = useState<VisaStat[]>([])
   const [files, setFiles] = useState<VisaFile[]>([])
   const [loading, setLoading] = useState(false)
@@ -116,6 +131,35 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   const [cycleSearch, setCycleSearch] = useState('')
   const [cycleSaving, setCycleSaving] = useState(false)
   const [stageInputs, setStageInputs] = useState<Record<string, any>>({})
+
+  // ===== toast للحفظ اللاصق =====
+  const [toast, setToast] = useState<string | null>(null)
+  const touristNameRef = useRef<HTMLInputElement>(null)
+  const annualNameRef = useRef<HTMLInputElement>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function showToast(msg: string) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToast(msg)
+    toastTimerRef.current = setTimeout(() => setToast(null), 2000)
+  }
+
+  // ===== إضافة دفعة =====
+  const [batchCommon, setBatchCommon] = useState({ type: 'tourist' as BatchVisaType, nationality: '', entry_date: '', visa_duration: '30' })
+  const [batchRows, setBatchRows] = useState<BatchRow[]>(Array.from({ length: 10 }, () => ({ full_name: '', passport_number: '' })))
+  const [batchSaving, setBatchSaving] = useState(false)
+  const batchNameRefs = useRef<(HTMLInputElement | null)[]>([])
+  const prevBatchRowsLen = useRef(batchRows.length)
+  const [excelPreview, setExcelPreview] = useState<ExcelImportRow[]>([])
+  const [showExcelPreview, setShowExcelPreview] = useState(false)
+  const [excelError, setExcelError] = useState<string | null>(null)
+  const [excelImporting, setExcelImporting] = useState(false)
+
+  useEffect(() => {
+    if (batchRows.length > prevBatchRowsLen.current) {
+      batchNameRefs.current[prevBatchRowsLen.current]?.focus()
+    }
+    prevBatchRowsLen.current = batchRows.length
+  }, [batchRows.length])
 
   useEffect(() => {
     const t = new Date().toISOString().split('T')[0]
@@ -376,9 +420,10 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     }])
     if (error) alert('خطأ: ' + error.message)
     else {
-      setTouristForm({ full_name: '', nationality: '', passport_number: '', entry_date: '', visa_duration: '30' })
-      setShowTouristForm(false)
+      showToast(`تم حفظ: ${touristForm.full_name}`)
+      setTouristForm(prev => ({ ...prev, full_name: '', passport_number: '' }))
       loadTouristVisas()
+      touristNameRef.current?.focus()
     }
     setLoading(false)
   }
@@ -395,11 +440,161 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     }])
     if (error) alert('خطأ: ' + error.message)
     else {
-      setAnnualForm({ full_name: '', nationality: '', passport_number: '', entry_date: '' })
-      setShowAnnualForm(false)
+      showToast(`تم حفظ: ${annualForm.full_name}`)
+      setAnnualForm(prev => ({ ...prev, full_name: '', passport_number: '' }))
       loadAnnualVisas()
+      annualNameRef.current?.focus()
     }
     setLoading(false)
+  }
+
+  // ===== إضافة دفعة =====
+  function setBatchType(t: BatchVisaType) {
+    setBatchCommon(prev => ({ ...prev, type: t }))
+    setShowExcelPreview(false)
+    setExcelPreview([])
+    setExcelError(null)
+  }
+
+  function addBatchRows(n: number) {
+    setBatchRows(prev => [...prev, ...Array.from({ length: n }, () => ({ full_name: '', passport_number: '' }))])
+  }
+
+  function updateBatchRow(idx: number, field: keyof BatchRow, value: string) {
+    setBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r))
+  }
+
+  async function saveBatch() {
+    const rowsToSave = batchRows.filter(r => r.full_name.trim() !== '')
+    if (rowsToSave.length === 0) { alert('لا توجد أسطر معبأة للحفظ'); return }
+    if (!batchCommon.nationality.trim() || !batchCommon.entry_date) { alert('يرجى تعبئة الجنسية وتاريخ الدخول للدفعة'); return }
+
+    const passportsInBatch = rowsToSave.map(r => r.passport_number.trim()).filter(Boolean)
+    const seen = new Set<string>()
+    const dupInBatch = new Set<string>()
+    passportsInBatch.forEach(p => { if (seen.has(p)) dupInBatch.add(p); else seen.add(p) })
+    const existingList = batchCommon.type === 'tourist' ? touristVisas : annualVisas
+    const existingPassports = new Set(existingList.map(v => (v.passport_number || '').trim()).filter(Boolean))
+    const dupExisting = Array.from(new Set(passportsInBatch.filter(p => existingPassports.has(p))))
+    if (dupInBatch.size > 0 || dupExisting.length > 0) {
+      const parts: string[] = []
+      if (dupInBatch.size > 0) parts.push(`مكررة داخل الدفعة: ${Array.from(dupInBatch).join('، ')}`)
+      if (dupExisting.length > 0) parts.push(`موجودة مسبقاً في قاعدة البيانات: ${dupExisting.join('، ')}`)
+      if (!confirm(`تحذير — أرقام جوازات ${parts.join(' | ')}. هل تريد المتابعة بالحفظ؟`)) return
+    }
+
+    setBatchSaving(true)
+    const table = batchCommon.type === 'tourist' ? 'tourist_visas' : 'annual_visas'
+    const payload = rowsToSave.map(r => batchCommon.type === 'tourist' ? {
+      full_name: r.full_name.trim(),
+      nationality: batchCommon.nationality.trim(),
+      passport_number: r.passport_number.trim(),
+      entry_date: batchCommon.entry_date,
+      visa_duration: parseInt(batchCommon.visa_duration),
+      status: 'active',
+    } : {
+      full_name: r.full_name.trim(),
+      nationality: batchCommon.nationality.trim(),
+      passport_number: r.passport_number.trim(),
+      entry_date: batchCommon.entry_date,
+      status: 'active',
+    })
+    const { error } = await supabase.from(table).insert(payload)
+    if (error) { alert('خطأ: ' + error.message); setBatchSaving(false); return }
+    await logActivity('إضافة دفعة تأشيرات', 'visa', `إضافة ${rowsToSave.length} تأشيرة ${batchCommon.type === 'tourist' ? 'سياحية' : 'سنوية'} دفعة واحدة`)
+    if (batchCommon.type === 'tourist') await loadTouristVisas(); else await loadAnnualVisas()
+    setBatchRows(Array.from({ length: 10 }, () => ({ full_name: '', passport_number: '' })))
+    setBatchSaving(false)
+    alert(`تم حفظ ${rowsToSave.length} تأشيرة`)
+  }
+
+  function downloadExcelTemplate() {
+    const worksheet = XLSX.utils.aoa_to_sheet([['الاسم', 'رقم الجواز', 'الجنسية', 'تاريخ الدخول', 'المدة']])
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'قالب')
+    XLSX.writeFile(workbook, 'قالب استيراد التأشيرات.xlsx')
+  }
+
+  async function handleExcelFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setExcelError(null)
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array' })
+      const sheet = wb.Sheets[wb.SheetNames[0]]
+      const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '', dateNF: 'yyyy-mm-dd' })
+      if (rows.length < 2) { setExcelError('الملف فارغ أو لا يحتوي على بيانات'); e.target.value = ''; return }
+
+      const headers = rows[0].map(h => String(h || ''))
+      const fieldIndex: Partial<Record<'full_name' | 'passport_number' | 'nationality' | 'entry_date' | 'visa_duration', number>> = {}
+      headers.forEach((h, i) => {
+        const norm = normalizeHeaderText(h)
+        if (fieldIndex.full_name === undefined && norm.includes('الاسم')) fieldIndex.full_name = i
+        else if (fieldIndex.passport_number === undefined && norm.includes('جواز')) fieldIndex.passport_number = i
+        else if (fieldIndex.nationality === undefined && norm.includes('جنسية')) fieldIndex.nationality = i
+        else if (fieldIndex.entry_date === undefined && norm.includes('دخول')) fieldIndex.entry_date = i
+        else if (fieldIndex.visa_duration === undefined && norm.includes('مدة')) fieldIndex.visa_duration = i
+      })
+      if (fieldIndex.full_name === undefined) { setExcelError('لم يتم العثور على عمود "الاسم" في الملف'); e.target.value = ''; return }
+
+      const existingList = batchCommon.type === 'tourist' ? touristVisas : annualVisas
+      const existingPassports = new Set(existingList.map(v => (v.passport_number || '').trim()).filter(Boolean))
+      const seen = new Set<string>()
+      const results: ExcelImportRow[] = []
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r]
+        if (!row || row.every(c => !String(c || '').trim())) continue
+        const full_name = String(fieldIndex.full_name !== undefined ? row[fieldIndex.full_name] : '').trim()
+        const passport_number = String(fieldIndex.passport_number !== undefined ? row[fieldIndex.passport_number] : '').trim()
+        const nationality = String(fieldIndex.nationality !== undefined ? row[fieldIndex.nationality] : '').trim() || batchCommon.nationality.trim()
+        const entry_date = String(fieldIndex.entry_date !== undefined ? row[fieldIndex.entry_date] : '').trim() || batchCommon.entry_date
+        const visa_duration = String(fieldIndex.visa_duration !== undefined ? row[fieldIndex.visa_duration] : '').trim() || batchCommon.visa_duration
+
+        let statusTag: ExcelImportRow['statusTag'] = 'new'
+        if (!full_name) statusTag = 'incomplete'
+        else if (passport_number && (existingPassports.has(passport_number) || seen.has(passport_number))) statusTag = 'duplicate'
+        if (statusTag !== 'incomplete' && passport_number) seen.add(passport_number)
+
+        results.push({ full_name, passport_number, nationality, entry_date, visa_duration, statusTag })
+      }
+      if (results.length === 0) { setExcelError('لا توجد بيانات صالحة في الملف'); e.target.value = ''; return }
+      setExcelPreview(results)
+      setShowExcelPreview(true)
+    } catch {
+      setExcelError('تعذر قراءة الملف — تأكد أنه بصيغة Excel صحيحة')
+    }
+    e.target.value = ''
+  }
+
+  async function confirmExcelImport() {
+    const toInsert = excelPreview.filter(r => r.statusTag === 'new')
+    if (toInsert.length === 0) { setShowExcelPreview(false); return }
+    setExcelImporting(true)
+    const table = batchCommon.type === 'tourist' ? 'tourist_visas' : 'annual_visas'
+    const payload = toInsert.map(r => batchCommon.type === 'tourist' ? {
+      full_name: r.full_name,
+      nationality: r.nationality || null,
+      passport_number: r.passport_number || null,
+      entry_date: r.entry_date,
+      visa_duration: parseInt(r.visa_duration) || 30,
+      status: 'active',
+    } : {
+      full_name: r.full_name,
+      nationality: r.nationality || null,
+      passport_number: r.passport_number || null,
+      entry_date: r.entry_date,
+      status: 'active',
+    })
+    const { error } = await supabase.from(table).insert(payload)
+    if (error) { alert('خطأ: ' + error.message); setExcelImporting(false); return }
+    const skipped = excelPreview.length - toInsert.length
+    await logActivity('استيراد تأشيرات من Excel', 'visa', `استيراد ${toInsert.length} تأشيرة ${batchCommon.type === 'tourist' ? 'سياحية' : 'سنوية'} من Excel`)
+    if (batchCommon.type === 'tourist') await loadTouristVisas(); else await loadAnnualVisas()
+    setShowExcelPreview(false)
+    setExcelPreview([])
+    setExcelImporting(false)
+    alert(`تم استيراد ${toInsert.length} تأشيرة بنجاح (تم تخطي ${skipped})`)
   }
 
   async function deleteTouristVisa(id: string) {
@@ -506,6 +701,13 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   const totalViolatorsCombined = getTotal('violators') + touristViolated + annualViolated
   const inputStyle = { width:'100%', padding:'9px 12px', borderRadius:8, border:'2px solid #d1d5db', fontSize:13, boxSizing:'border-box' as const, color:'#111827', background:'#fff', marginBottom:10 }
 
+  const batchFilledCount = useMemo(() => batchRows.filter(r => r.full_name.trim() !== '').length, [batchRows])
+  const batchImportCounts = useMemo(() => {
+    const counts = { new: 0, duplicate: 0, incomplete: 0 }
+    excelPreview.forEach(r => { counts[r.statusTag]++ })
+    return counts
+  }, [excelPreview])
+
   const filteredTourist = useMemo(() => {
     if (!touristSearch.trim()) return touristVisas
     const term = touristSearch.toLowerCase()
@@ -535,6 +737,13 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
 
   return (
     <div style={{margin:'24px',fontFamily:'system-ui',direction:'rtl'}}>
+
+      {toast && (
+        <div style={{position:'fixed',top:20,left:'50%',transform:'translateX(-50%)',background:'#16a34a',color:'#fff',
+          padding:'10px 22px',borderRadius:8,fontSize:14,fontWeight:600,boxShadow:'0 4px 12px rgba(0,0,0,0.18)',zIndex:9999}}>
+          {toast}
+        </div>
+      )}
 
       {/* تبويبات */}
       <div style={{display:'flex',gap:6,marginBottom:16,background:'#e5e7eb',padding:4,borderRadius:10,width:'fit-content',flexWrap:'wrap'}}>
@@ -591,6 +800,14 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
             return null
           })()}
         </button>
+        {!readOnly && (
+          <button onClick={()=>setActiveTab('batch')}
+            style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+              background:activeTab==='batch'?'#fff':'transparent',color:activeTab==='batch'?'#1e40af':'#6b7280',
+              boxShadow:activeTab==='batch'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+            إضافة دفعة
+          </button>
+        )}
       </div>
 
       {/* قسم الإحصائيات */}
@@ -806,9 +1023,11 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
               <div style={{padding:'20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,maxWidth:600}}>
                   <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الاسم الكامل *</label>
-                    <input value={touristForm.full_name} onChange={e=>setTouristForm({...touristForm,full_name:e.target.value})} placeholder="اسم الشخص" style={inputStyle}/></div>
+                    <input ref={touristNameRef} autoFocus value={touristForm.full_name} onChange={e=>setTouristForm({...touristForm,full_name:e.target.value})} placeholder="اسم الشخص" style={inputStyle}/></div>
                   <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>رقم الجواز</label>
-                    <input value={touristForm.passport_number} onChange={e=>setTouristForm({...touristForm,passport_number:e.target.value})} placeholder="رقم الجواز" style={{...inputStyle,direction:'ltr',textAlign:'right'}}/></div>
+                    <input value={touristForm.passport_number} onChange={e=>setTouristForm({...touristForm,passport_number:e.target.value})}
+                      onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); addTouristVisa() } }}
+                      placeholder="رقم الجواز" style={{...inputStyle,direction:'ltr',textAlign:'right'}}/></div>
                   <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الجنسية</label>
                     <input value={touristForm.nationality} onChange={e=>setTouristForm({...touristForm,nationality:e.target.value})} placeholder="مثال: صيني" style={inputStyle}/></div>
                   <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ الدخول *</label>
@@ -957,9 +1176,11 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
               <div style={{padding:'20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,maxWidth:600}}>
                   <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الاسم الكامل *</label>
-                    <input value={annualForm.full_name} onChange={e=>setAnnualForm({...annualForm,full_name:e.target.value})} placeholder="اسم الشخص" style={inputStyle}/></div>
+                    <input ref={annualNameRef} autoFocus value={annualForm.full_name} onChange={e=>setAnnualForm({...annualForm,full_name:e.target.value})} placeholder="اسم الشخص" style={inputStyle}/></div>
                   <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>رقم الجواز</label>
-                    <input value={annualForm.passport_number} onChange={e=>setAnnualForm({...annualForm,passport_number:e.target.value})} placeholder="رقم الجواز" style={{...inputStyle,direction:'ltr',textAlign:'right'}}/></div>
+                    <input value={annualForm.passport_number} onChange={e=>setAnnualForm({...annualForm,passport_number:e.target.value})}
+                      onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); addAnnualVisa() } }}
+                      placeholder="رقم الجواز" style={{...inputStyle,direction:'ltr',textAlign:'right'}}/></div>
                   <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الجنسية</label>
                     <input value={annualForm.nationality} onChange={e=>setAnnualForm({...annualForm,nationality:e.target.value})} placeholder="مثال: صيني" style={inputStyle}/></div>
                   <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ الدخول *</label>
@@ -1389,6 +1610,158 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
           </div>
         )
       })()}
+
+      {/* تبويب إضافة دفعة */}
+      {activeTab === 'batch' && !readOnly && (
+        <div>
+          <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden',marginBottom:20}}>
+            <div style={{padding:'16px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb'}}>
+              <h2 style={{margin:0,fontSize:17,fontWeight:700,color:'#111827'}}>إضافة دفعة تأشيرات</h2>
+            </div>
+            <div style={{padding:'20px'}}>
+              <div style={{display:'flex',gap:8,marginBottom:16}}>
+                <button onClick={()=>setBatchType('tourist')}
+                  style={{padding:'8px 18px',fontSize:13,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+                    background:batchCommon.type==='tourist'?'#1e40af':'#e5e7eb',color:batchCommon.type==='tourist'?'#fff':'#374151'}}>
+                  سياحية
+                </button>
+                <button onClick={()=>setBatchType('annual')}
+                  style={{padding:'8px 18px',fontSize:13,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+                    background:batchCommon.type==='annual'?'#7c3aed':'#e5e7eb',color:batchCommon.type==='annual'?'#fff':'#374151'}}>
+                  سنوية
+                </button>
+              </div>
+
+              <div style={{display:'grid',gridTemplateColumns: batchCommon.type==='tourist' ? '1fr 1fr 1fr' : '1fr 1fr',gap:12,maxWidth:700,marginBottom:16}}>
+                <div>
+                  <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الجنسية *</label>
+                  <input value={batchCommon.nationality} onChange={e=>setBatchCommon({...batchCommon,nationality:e.target.value})} placeholder="مثال: صيني" style={inputStyle}/>
+                </div>
+                <div>
+                  <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ الدخول *</label>
+                  <input type="date" value={batchCommon.entry_date} onChange={e=>setBatchCommon({...batchCommon,entry_date:e.target.value})} style={inputStyle}/>
+                </div>
+                {batchCommon.type==='tourist' && (
+                  <div>
+                    <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>مدة الفيزا</label>
+                    <select value={batchCommon.visa_duration} onChange={e=>setBatchCommon({...batchCommon,visa_duration:e.target.value})} style={inputStyle}>
+                      <option value="30">30 يوم</option>
+                      <option value="60">60 يوم</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}}>
+                <span style={{fontSize:13,fontWeight:700,color:'#1e40af',background:'#eff6ff',padding:'6px 14px',borderRadius:20}}>
+                  تم تعبئة {batchFilledCount} من {batchRows.length} سطر
+                </span>
+                <button onClick={()=>addBatchRows(10)}
+                  style={{background:'#f3f4f6',color:'#374151',border:'1px solid #d1d5db',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  + إضافة 10 أسطر
+                </button>
+                <label style={{display:'inline-flex',alignItems:'center',gap:6,background:'#eff6ff',color:'#1d4ed8',border:'1px dashed #93c5fd',borderRadius:8,padding:'7px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  📥 استيراد من Excel
+                  <input type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={handleExcelFile}/>
+                </label>
+                <button onClick={downloadExcelTemplate}
+                  style={{background:'#f3f4f6',color:'#374151',border:'1px solid #d1d5db',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  ⬇ تنزيل قالب Excel فارغ
+                </button>
+              </div>
+              {excelError && (
+                <div style={{background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:8,padding:'10px 14px',marginBottom:12,color:'#dc2626',fontSize:13,fontWeight:600}}>
+                  {excelError}
+                </div>
+              )}
+
+              <div style={{overflowX:'auto',border:'1px solid #e5e7eb',borderRadius:10,marginBottom:14}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                  <thead>
+                    <tr style={{background:'#f3f4f6'}}>
+                      <th style={{padding:'8px 12px',borderBottom:'2px solid #e5e7eb',width:40,color:'#6b7280'}}>#</th>
+                      <th style={{padding:'8px 12px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>الاسم</th>
+                      <th style={{padding:'8px 12px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>رقم الجواز</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {batchRows.map((row,idx)=>(
+                      <tr key={idx} style={{borderBottom:'1px solid #f3f4f6'}}>
+                        <td style={{padding:'6px 12px',color:'#9ca3af',fontSize:12,textAlign:'center'}}>{idx+1}</td>
+                        <td style={{padding:'6px 8px'}}>
+                          <input ref={el=>{batchNameRefs.current[idx]=el}} value={row.full_name} onChange={e=>updateBatchRow(idx,'full_name',e.target.value)}
+                            style={{width:'100%',padding:'7px 10px',borderRadius:6,border:'1px solid #d1d5db',fontSize:13,color:'#111827',boxSizing:'border-box'}}/>
+                        </td>
+                        <td style={{padding:'6px 8px'}}>
+                          <input value={row.passport_number} onChange={e=>updateBatchRow(idx,'passport_number',e.target.value)}
+                            onKeyDown={e=>{ if(e.key==='Enter' && idx===batchRows.length-1){ e.preventDefault(); addBatchRows(1) } }}
+                            style={{width:'100%',padding:'7px 10px',borderRadius:6,border:'1px solid #d1d5db',fontSize:13,color:'#111827',boxSizing:'border-box',direction:'ltr',textAlign:'right'}}/>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <button onClick={saveBatch} disabled={batchSaving || batchFilledCount===0}
+                style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600,opacity:(batchSaving||batchFilledCount===0)?0.6:1}}>
+                {batchSaving ? 'جارٍ الحفظ...' : `حفظ الكل (${batchFilledCount})`}
+              </button>
+            </div>
+          </div>
+
+          {showExcelPreview && (
+            <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden',marginBottom:20}}>
+              <div style={{padding:'16px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <h2 style={{margin:0,fontSize:16,fontWeight:700,color:'#111827'}}>معاينة الاستيراد من Excel</h2>
+                <button onClick={()=>setShowExcelPreview(false)} style={{background:'none',border:'none',color:'#6b7280',cursor:'pointer',fontSize:16}}>✕</button>
+              </div>
+              <div style={{padding:'12px 20px',display:'flex',gap:8,flexWrap:'wrap'}}>
+                <span style={{background:'#dcfce7',color:'#15803d',padding:'4px 12px',borderRadius:20,fontSize:12,fontWeight:700}}>{batchImportCounts.new} جاهز للاستيراد</span>
+                <span style={{background:'#f3f4f6',color:'#374151',padding:'4px 12px',borderRadius:20,fontSize:12,fontWeight:700}}>{batchImportCounts.duplicate} مكرر</span>
+                <span style={{background:'#fee2e2',color:'#dc2626',padding:'4px 12px',borderRadius:20,fontSize:12,fontWeight:700}}>{batchImportCounts.incomplete} ناقص</span>
+              </div>
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                  <thead>
+                    <tr style={{background:'#f3f4f6'}}>
+                      {['الاسم','رقم الجواز','الجنسية','تاريخ الدخول','المدة','الحالة'].map(h=>(
+                        <th key={h} style={{padding:'10px 14px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {excelPreview.map((r,i)=>(
+                      <tr key={i} style={{borderBottom:'1px solid #e5e7eb'}}>
+                        <td style={{padding:'8px 14px',fontWeight:600,color:'#111827'}}>{r.full_name || '—'}</td>
+                        <td style={{padding:'8px 14px',color:'#6b7280',direction:'ltr',textAlign:'right'}}>{r.passport_number || '—'}</td>
+                        <td style={{padding:'8px 14px',color:'#6b7280'}}>{r.nationality || '—'}</td>
+                        <td style={{padding:'8px 14px',color:'#6b7280'}}>{r.entry_date || '—'}</td>
+                        <td style={{padding:'8px 14px',color:'#6b7280'}}>{r.visa_duration ? `${r.visa_duration} يوم` : '—'}</td>
+                        <td style={{padding:'8px 14px'}}>
+                          {r.statusTag==='new' && <span style={{background:'#dcfce7',color:'#15803d',padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700}}>جديد</span>}
+                          {r.statusTag==='duplicate' && <span style={{background:'#f3f4f6',color:'#374151',padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700}}>مكرر</span>}
+                          {r.statusTag==='incomplete' && <span style={{background:'#fee2e2',color:'#dc2626',padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700}}>ناقص</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{padding:'14px 20px',display:'flex',gap:8}}>
+                <button onClick={confirmExcelImport} disabled={excelImporting || batchImportCounts.new===0}
+                  style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',cursor:'pointer',fontSize:14,fontWeight:600,opacity:(excelImporting||batchImportCounts.new===0)?0.6:1}}>
+                  {excelImporting ? 'جارٍ الاستيراد...' : `تأكيد الاستيراد (${batchImportCounts.new})`}
+                </button>
+                <button onClick={()=>setShowExcelPreview(false)}
+                  style={{background:'#e5e7eb',color:'#374151',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
