@@ -70,46 +70,48 @@ function normalizeHeaderText(s: string) {
   return s.replace(/[ً-ٰٟ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
-type FpField = 'device_id' | 'name' | 'date' | 'check_in' | 'check_out' | 'time'
-const fpFieldMatchers: { field: FpField; keywords: string[] }[] = [
-  { field: 'check_in', keywords: ['دخول', 'check in', 'check-in', 'checkin', 'clock in', 'clock-in', 'time in', 'in time'] },
-  { field: 'check_out', keywords: ['خروج', 'check out', 'check-out', 'checkout', 'clock out', 'clock-out', 'time out', 'out time'] },
-  { field: 'device_id', keywords: ['رقم الجهاز', 'رقم المستخدم', 'user id', 'userid', 'device user', 'emp id', 'employee id', 'enroll', 'pin'] },
-  { field: 'date', keywords: ['تاريخ', 'date'] },
-  { field: 'name', keywords: ['اسم', 'name'] },
-  { field: 'time', keywords: ['وقت', 'time'] },
-]
-function matchFpField(header: string): FpField | null {
-  const norm = normalizeHeaderText(header)
-  for (const m of fpFieldMatchers) {
-    if (m.keywords.some(k => norm.includes(k))) return m.field
+const deviceIdKeywords = ['رقم الجهاز', 'رقم المستخدم', 'user id', 'userid', 'device user', 'emp id', 'employee id', 'enroll', 'pin']
+const checkInKeywords = ['دخول', 'check in', 'check-in', 'checkin', 'clock in', 'clock-in', 'time in', 'in time']
+const checkOutKeywords = ['خروج', 'check out', 'check-out', 'checkout', 'clock out', 'clock-out', 'time out', 'out time']
+const nameKeywords = ['اسم الموظف', 'employee name', 'اسم', 'name']
+const datetimeKeywords = ['تاريخ', 'date', 'وقت', 'time']
+
+// ينزع لواحق تشويش مثل A7P7 أو A1P1 (ترميز عربي مكسور لصباحاً/مساءً) — أوقات جهاز ZKTeco بنظام 24 ساعة أصلاً
+function stripGarbledSuffix(s: string): string {
+  return s.replace(/[AP]\d[AP]\d/gi, '').trim()
+}
+
+// يقرأ خلية قد تحتوي تاريخاً و/أو وقتاً بصيغة M/D/YYYY H:mm (تنسيق الجهاز الأمريكي) أو جزءاً منها فقط —
+// يرفض تواريخ 1900/epoch وأوقات 0:00 لأنها ناتجة عن فصل عمود التاريخ/الوقت يدوياً بشكل معطوب في إكسل
+function parseDateTimeCell(raw: string): { date: string | null; time: string | null } {
+  const s = stripGarbledSuffix(String(raw || '').trim())
+  if (!s) return { date: null, time: null }
+
+  let date: string | null = null
+  const dm = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (dm) {
+    const month = parseInt(dm[1], 10), day = parseInt(dm[2], 10), year = parseInt(dm[3], 10)
+    if (year >= 1971 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  } else {
+    const dm2 = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/)
+    if (dm2) {
+      const year = parseInt(dm2[1], 10)
+      if (year >= 1971) date = `${dm2[1]}-${dm2[2].padStart(2, '0')}-${dm2[3].padStart(2, '0')}`
+    }
   }
-  return null
-}
 
-function parseTimeFlexible(raw: string): string | null {
-  const s = raw.trim()
-  if (!s) return null
-  const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|ص|م)?$/i)
-  if (!m) return null
-  let h = parseInt(m[1], 10)
-  const min = m[2]
-  const sec = m[3] || '00'
-  const ampm = m[4]?.toLowerCase()
-  if (ampm === 'pm' || ampm === 'م') { if (h < 12) h += 12 }
-  else if (ampm === 'am' || ampm === 'ص') { if (h === 12) h = 0 }
-  if (h > 23) return null
-  return `${String(h).padStart(2, '0')}:${min}:${sec}`
-}
-
-function parseDateFlexible(raw: string): string | null {
-  const s = raw.trim()
-  if (!s) return null
-  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
-  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
-  m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})/)
-  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
-  return null
+  let time: string | null = null
+  const tm = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+  if (tm) {
+    const h = parseInt(tm[1], 10)
+    if (h <= 23) {
+      const candidate = `${String(h).padStart(2, '0')}:${tm[2]}:${tm[3] || '00'}`
+      if (candidate !== '00:00:00') time = candidate
+    }
+  }
+  return { date, time }
 }
 
 function enumerateDates(from: string, to: string): string[] {
@@ -134,14 +136,16 @@ function getDuration(r: FingerprintRecord): string {
   return `${Math.floor(mins / 60)}س ${mins % 60}د`
 }
 
-function getRecordIndicators(r: FingerprintRecord): { label: string; tone: 'warning' | 'danger' | 'neutral' }[] {
-  const badges: { label: string; tone: 'warning' | 'danger' | 'neutral' }[] = []
+function getRecordIndicators(r: FingerprintRecord): { label: string; tone: 'warning' | 'danger' | 'neutral' | 'info' }[] {
+  const badges: { label: string; tone: 'warning' | 'danger' | 'neutral' | 'info' }[] = []
   if (r.punch_count <= 1) {
-    badges.push({ label: 'بصمة واحدة فقط', tone: 'neutral' })
-    return badges
+    badges.push({ label: 'دخول بلا خروج', tone: 'neutral' })
+  } else {
+    if (r.first_punch && r.first_punch.slice(0, 5) > '07:00') badges.push({ label: 'تأخر', tone: 'warning' })
+    if (r.last_punch && r.last_punch.slice(0, 5) < '14:00') badges.push({ label: 'خروج مبكر', tone: 'danger' })
   }
-  if (r.first_punch && r.first_punch.slice(0, 5) > '07:00') badges.push({ label: 'تأخر', tone: 'warning' })
-  if (r.last_punch && r.last_punch.slice(0, 5) < '14:00') badges.push({ label: 'خروج مبكر', tone: 'danger' })
+  const lateNight = (!!r.first_punch && r.first_punch.slice(0, 5) >= '21:00') || (!!r.last_punch && r.last_punch.slice(0, 5) >= '21:00')
+  if (lateNight) badges.push({ label: 'خارج أوقات الدوام', tone: 'info' })
   return badges
 }
 
@@ -200,6 +204,7 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
 
   // ===== تبويب استيراد سجلات =====
   const [importPreview, setImportPreview] = useState<ImportPreviewRow[]>([])
+  const [importReadSample, setImportReadSample] = useState<{ device_user_id: string; record_date: string; time: string }[]>([])
   const [showImportPreview, setShowImportPreview] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
@@ -222,36 +227,66 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
       if (rows.length < 2) { setImportError('الملف فارغ أو لا يحتوي على بيانات'); e.target.value = ''; return }
 
       const headers = rows[0].map(h => String(h || ''))
-      const fieldIndex: Partial<Record<FpField, number>> = {}
+      let deviceIdIdx: number | undefined
+      let checkInIdx: number | undefined
+      let checkOutIdx: number | undefined
+      let nameIdx: number | undefined
+      const datetimeIndices: number[] = []
       headers.forEach((h, i) => {
-        const field = matchFpField(h)
-        if (field && fieldIndex[field] === undefined) fieldIndex[field] = i
+        const norm = normalizeHeaderText(h)
+        if (deviceIdIdx === undefined && deviceIdKeywords.some(k => norm.includes(k))) { deviceIdIdx = i; return }
+        if (checkInIdx === undefined && checkInKeywords.some(k => norm.includes(k))) { checkInIdx = i; return }
+        if (checkOutIdx === undefined && checkOutKeywords.some(k => norm.includes(k))) { checkOutIdx = i; return }
+        // نستثني "اسم المشروع" كي لا يُؤخذ خطأً كعمود اسم الموظف (الاسم للعرض فقط ولا يُستخدم للربط إطلاقاً)
+        if (nameIdx === undefined && !norm.includes('مشروع') && !norm.includes('project') && nameKeywords.some(k => norm.includes(k))) { nameIdx = i; return }
+        if (datetimeKeywords.some(k => norm.includes(k))) datetimeIndices.push(i)
       })
 
-      if (fieldIndex.device_id === undefined) { setImportError('لم يتم العثور على عمود رقم المستخدم/الجهاز في الملف'); e.target.value = ''; return }
-      if (fieldIndex.date === undefined) { setImportError('لم يتم العثور على عمود التاريخ في الملف'); e.target.value = ''; return }
-      if (fieldIndex.check_in === undefined && fieldIndex.check_out === undefined && fieldIndex.time === undefined) {
-        setImportError('لم يتم العثور على أعمدة الوقت (وقت أو دخول/خروج) في الملف'); e.target.value = ''; return
+      if (deviceIdIdx === undefined) { setImportError('لم يتم العثور على عمود رقم المستخدم في الملف'); e.target.value = ''; return }
+      const hasSummaryFormat = checkInIdx !== undefined || checkOutIdx !== undefined
+      if (!hasSummaryFormat && datetimeIndices.length === 0) {
+        setImportError('لم يتم العثور على عمود التاريخ والوقت في الملف'); e.target.value = ''; return
       }
 
       interface PunchEntry { device_user_id: string; record_date: string; time: string }
       const entries: PunchEntry[] = []
+      const rawNameByDevice: Record<string, string> = {}
+      const dateCandidateIdx = [...datetimeIndices, checkInIdx, checkOutIdx].filter((i): i is number => i !== undefined)
+
       for (let r = 1; r < rows.length; r++) {
         const row = rows[r]
         if (!row || row.every(c => !String(c || '').trim())) continue
-        const device_user_id = String(row[fieldIndex.device_id] ?? '').trim()
-        const record_date = parseDateFlexible(String(row[fieldIndex.date] ?? ''))
-        if (!device_user_id || !record_date) continue
-        if (fieldIndex.check_in !== undefined || fieldIndex.check_out !== undefined) {
-          const ci = fieldIndex.check_in !== undefined ? parseTimeFlexible(String(row[fieldIndex.check_in] ?? '')) : null
-          const co = fieldIndex.check_out !== undefined ? parseTimeFlexible(String(row[fieldIndex.check_out] ?? '')) : null
+        const device_user_id = String(row[deviceIdIdx] ?? '').trim()
+        if (!device_user_id) continue
+        if (nameIdx !== undefined && !rawNameByDevice[device_user_id]) {
+          const rn = String(row[nameIdx] ?? '').trim()
+          if (rn) rawNameByDevice[device_user_id] = rn
+        }
+
+        // نلتقط التاريخ من أول عمود يحمل تاريخاً صالحاً (ليس 1900/epoch) — يدعم حالة فصل عمود التاريخ/الوقت يدوياً بشكل معطوب
+        let record_date: string | null = null
+        for (const ci of dateCandidateIdx) {
+          const { date } = parseDateTimeCell(String(row[ci] ?? ''))
+          if (date) { record_date = date; break }
+        }
+        if (!record_date) continue
+
+        if (hasSummaryFormat) {
+          const ci = checkInIdx !== undefined ? parseDateTimeCell(String(row[checkInIdx] ?? '')).time : null
+          const co = checkOutIdx !== undefined ? parseDateTimeCell(String(row[checkOutIdx] ?? '')).time : null
           if (ci) entries.push({ device_user_id, record_date, time: ci })
           if (co) entries.push({ device_user_id, record_date, time: co })
-        } else if (fieldIndex.time !== undefined) {
-          const t = parseTimeFlexible(String(row[fieldIndex.time] ?? ''))
-          if (t) entries.push({ device_user_id, record_date, time: t })
+        } else {
+          let time: string | null = null
+          for (const ci of datetimeIndices) {
+            const { time: t } = parseDateTimeCell(String(row[ci] ?? ''))
+            if (t) { time = t; break }
+          }
+          if (time) entries.push({ device_user_id, record_date, time })
         }
       }
+
+      setImportReadSample(entries.slice(0, 3))
 
       if (entries.length === 0) { setImportError('لا توجد بصمات صالحة في الملف — تحقق من صيغة الوقت والتاريخ'); e.target.value = ''; return }
 
@@ -263,15 +298,17 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
 
       const existingKeys = new Set(fingerprintRecords.map(r => `${r.device_user_id}__${r.record_date}`))
       const preview: ImportPreviewRow[] = Object.values(groups).map(list => {
-        const times = list.map(en => en.time).sort()
+        // إزالة تكرار البصمة بدقة الدقيقة (الجهاز أحياناً يقرأ الإصبع مرتين لنفس الدقيقة)
+        const uniqueTimes = Array.from(new Set(list.map(en => en.time))).sort()
         const device_user_id = list[0].device_user_id
         const record_date = list[0].record_date
         const emp = employees.find(e => (e.device_user_id || '').trim() === device_user_id)
         const key = `${device_user_id}__${record_date}`
         const statusTag: ImportPreviewRow['statusTag'] = !emp ? 'unlinked' : existingKeys.has(key) ? 'duplicate' : 'new'
         return {
-          device_user_id, record_date, employee_id: emp?.id || null, employee_name: emp?.name || null,
-          first_punch: times[0], last_punch: times[times.length - 1], punch_count: list.length, statusTag,
+          device_user_id, record_date, employee_id: emp?.id || null,
+          employee_name: emp?.name || (rawNameByDevice[device_user_id] ? `${rawNameByDevice[device_user_id]} (من الملف)` : null),
+          first_punch: uniqueTimes[0], last_punch: uniqueTimes[uniqueTimes.length - 1], punch_count: uniqueTimes.length, statusTag,
         }
       })
 
@@ -480,6 +517,9 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
               <h2 className="ui-card__title" style={{ fontSize: 'var(--text-md)' }}>استيراد سجلات من ملف الجهاز</h2>
             </div>
             <div style={{ padding: 'var(--space-5)' }}>
+              <div style={{ background: 'var(--color-info-surface)', border: 'var(--border-width-thin) solid var(--color-info-border)', borderRadius: 'var(--radius-md)', padding: '10px 16px', marginBottom: 'var(--space-4)', fontSize: 'var(--text-sm)', color: 'var(--color-info)', fontWeight: 'var(--weight-semibold)' }}>
+                ارفع الملف كما يصدّره الجهاز مباشرة دون فصل أعمدة التاريخ والوقت يدوياً
+              </div>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--color-accent-subtle)', color: 'var(--color-accent-hover)', border: 'var(--border-width-thin) dashed var(--color-border-strong)', borderRadius: 'var(--radius-md)', padding: '10px 18px', cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
                 📥 رفع ملف Excel أو CSV
                 <input type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleFingerprintFile} />
@@ -487,6 +527,28 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
               {importError && <div style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--color-danger)', fontWeight: 'var(--weight-semibold)' }}>{importError}</div>}
             </div>
           </Card>
+
+          {showImportPreview && importReadSample.length > 0 && (
+            <Card style={{ marginBottom: 'var(--space-4)' }}>
+              <div className="ui-card__header">
+                <h3 className="ui-card__title" style={{ fontSize: 'var(--text-md)' }}>تأكيد القراءة (أول 3 صفوف من الملف)</h3>
+              </div>
+              <Table>
+                <thead>
+                  <tr>{['رقم المستخدم', 'التاريخ المقروء', 'الوقت المقروء'].map((h, i) => <Table.Th key={i}>{h}</Table.Th>)}</tr>
+                </thead>
+                <tbody>
+                  {importReadSample.map((s, i) => (
+                    <tr key={i}>
+                      <Table.Td style={{ direction: 'ltr', textAlign: 'right' }}>{s.device_user_id}</Table.Td>
+                      <Table.Td>{fmtDate(s.record_date)}</Table.Td>
+                      <Table.Td>{toHHMM(s.time)}</Table.Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Card>
+          )}
 
           {showImportPreview && (
             <Card>
