@@ -14,6 +14,7 @@ import Custody from './components/Custody'
 import Contracts from './components/Contracts'
 import Overtime from './components/Overtime'
 import Recruitment from './components/Recruitment'
+import Fingerprint from './components/Fingerprint'
 import Reports from './components/Reports'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { logActivity } from './logActivity'
@@ -170,6 +171,7 @@ export default function Home() {
         { id: 'employees', label: 'الموظفين', icon: 'EMP', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'contracts', label: 'العقود', icon: 'CONT', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'attendance', label: 'الحضور', icon: 'ATT', show: ['editor','admin','guest_1','guest_2'] },
+        { id: 'fingerprint', label: 'تقارير البصمة', icon: 'FP', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'overtime', label: 'الأوفرتايم', icon: 'OT', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'payroll', label: 'الرواتب', icon: 'PAY', show: ['editor','admin','guest_1','guest_2'] },
         { id: 'custody', label: 'العهد المالية', icon: 'CUST', show: ['editor','admin','guest_1','guest_2'] },
@@ -203,6 +205,7 @@ export default function Home() {
     dashboard: 'لوحة المعلومات',
     employees: 'الموظفين',
     attendance: 'الحضور',
+    fingerprint: 'تقارير البصمة',
     payroll: 'الرواتب',
     documents: 'الكتب الرسمية',
     custody: 'العهد المالية',
@@ -308,6 +311,15 @@ export default function Home() {
           <circle cx="11" cy="12.5" r="8" stroke={color} strokeWidth="1.8"/>
           <path d="M11 8v4.5l3 2" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           <path d="M17 3.5v4h-4" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ),
+      FP: (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M12 3a7 7 0 00-7 7v2c0 3 1 5.5 2.5 7.5" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+          <path d="M12 3a7 7 0 017 7v2c0 1.5-.2 2.8-.6 4" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+          <path d="M8.5 10a3.5 3.5 0 017 0v2.5c0 3-1 5.5-2.7 7.5" stroke={color} strokeWidth="1.7" strokeLinecap="round"/>
+          <path d="M12 10v3c0 3.2-.9 5.9-2.4 8" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+          <path d="M15 10.2V13c0 1.6-.2 3-.6 4.3" stroke={color} strokeWidth="1.6" strokeLinecap="round" opacity="0.7"/>
         </svg>
       ),
       RECRUIT: (
@@ -608,6 +620,7 @@ export default function Home() {
           {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
           {activeSection === 'employees' && <Employees readOnly={isReadOnly} />}
           {activeSection === 'attendance' && <Attendance readOnly={isReadOnly} userRole={userRole || ''} />}
+          {activeSection === 'fingerprint' && <Fingerprint readOnly={isReadOnly} />}
           {activeSection === 'visa' && <Visa readOnly={isReadOnly} />}
           {activeSection === 'payroll' && <Payroll readOnly={isReadOnly} userRole={userRole || ''} />}
 
