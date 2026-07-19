@@ -5,6 +5,7 @@ export type PermLevel = 'none' | 'read' | 'edit'
 export type Permissions = Record<string, PermLevel>
 
 export const SECTIONS: { id: string; label: string }[] = [
+  { id: 'dashboard', label: 'لوحة المعلومات' },
   { id: 'employees', label: 'الموظفين' },
   { id: 'attendance', label: 'الحضور' },
   { id: 'overtime', label: 'الأوفرتايم' },

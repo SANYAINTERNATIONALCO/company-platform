@@ -49,17 +49,43 @@ export default function Home() {
 
   useEffect(() => { if (user) loadRole() }, [user])
 
-  useEffect(() => {
-    if (userRole === 'editor' || userRole === 'admin') loadVisaAlerts()
-  }, [userRole])
+  // كل تحميل مشروط فعلياً بصلاحية القسم — لا يُجلب شيء ثم يُخفى، بل لا يُجلب أصلاً بلا canView
+  // لوحة المعلومات صارت قسماً كباقي الأقسام ضمن SECTIONS — تُخفى/تُظهر عبر الصلاحيات مثل أي قسم آخر
+  function isSectionAllowed(id: string): boolean {
+    if (EDITOR_ONLY.includes(id)) return userRole === 'editor'
+    return canView(perms, id)
+  }
+
+  // أول قسم مصرَّح به فعلياً — يُستخدم كوجهة آمنة عند رفض الوصول لقسم (بدل الافتراض القديم بأن لوحة المعلومات دائماً متاحة)
+  function firstAllowedSectionId(): string {
+    for (const group of navGroups) {
+      for (const item of group.items) {
+        if (isSectionAllowed(item.id)) return item.id
+      }
+    }
+    return 'dashboard'
+  }
 
   useEffect(() => {
-    if (user && userRole) {
-      loadTaskAlerts()
-      loadDashStats()
-      if (userRole !== 'accountant') loadMiniChart()
+    if (user && userRole && canView(perms, 'visa')) loadVisaAlerts()
+  }, [user, userRole, perms])
+
+  useEffect(() => {
+    if (!user || !userRole) return
+    if (canView(perms, 'tasks')) loadTaskAlerts()
+    loadDashStats()
+    if (canView(perms, 'reports')) loadMiniChart()
+  }, [user, userRole, perms])
+
+  // دفاع في العمق: لو activeSection قسماً غير مصرَّح به لأي سبب (رابط مباشر، حالة قديمة، تعديل صلاحيات أثناء التصفح،
+  // أو لوحة المعلومات نفسها أصبحت مخفية عن هذا المستخدم) — التوجيه لأول قسم مصرَّح به فعلياً، وليس للوحة المعلومات دائماً
+  // تصحيح مشروط لحالة تصفح غير صالحة، وليس مزامنة قيمة مشتقة من render — استثناء متعمد لقاعدة set-state-in-effect
+  useEffect(() => {
+    if (userRole && !isSectionAllowed(activeSection)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActiveSection(firstAllowedSectionId())
     }
-  }, [user, userRole])
+  }, [activeSection, userRole, perms])
 
   async function loadTaskAlerts() {
     if (!user) return
@@ -76,34 +102,44 @@ export default function Home() {
   }
 
   async function loadDashStats() {
-    // عدد الموظفين النشطين
-    const { count: empCount } = await supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'active')
-    // السلف المنخفضة
-    const { data: funds } = await supabase.from('funds_summary').select('*')
-    const lowFunds = (funds || []).filter((f: any) => f['المتبقي'] > 0 && f['المتبقي'] <= f['المبلغ المستلم'] * 0.10).length
-    setDashStats(prev => ({ ...prev, employees: empCount || 0, lowFunds }))
+    // عدد الموظفين النشطين — فقط إذا كان له صلاحية قسم الموظفين
+    if (canView(perms, 'employees')) {
+      const { count: empCount } = await supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'active')
+      setDashStats(prev => ({ ...prev, employees: empCount || 0 }))
+    }
+    // السلف المنخفضة — فقط إذا كان له صلاحية قسم الحسابات
+    if (canView(perms, 'finance')) {
+      const { data: funds } = await supabase.from('funds_summary').select('*')
+      const lowFunds = (funds || []).filter((f: any) => f['المتبقي'] > 0 && f['المتبقي'] <= f['المبلغ المستلم'] * 0.10).length
+      setDashStats(prev => ({ ...prev, lowFunds }))
+    }
   }
 
   async function loadMiniChart() {
     const year = new Date().getFullYear()
     const yearStr = String(year)
     const MONTHS_SHORT = ['ينا','فبر','مار','أبر','ماي','يون','يول','أغس','سبت','أكت','نوف','ديس']
-    const [payroll, expenses, fuel, maint, delivery] = await Promise.all([
-      supabase.from('payroll_records').select('payroll_month, net_salary').gte('payroll_month', yearStr + '-01').lte('payroll_month', yearStr + '-12'),
-      supabase.from('expenses').select('amount, expense_date').gte('expense_date', yearStr + '-01-01').lte('expense_date', yearStr + '-12-31'),
-      supabase.from('fuel_receipts').select('amount, created_at').gte('created_at', yearStr + '-01-01').lte('created_at', yearStr + '-12-31'),
-      supabase.from('maintenance_receipts').select('amount, created_at').gte('created_at', yearStr + '-01-01').lte('created_at', yearStr + '-12-31'),
-      supabase.from('delivery_receipts').select('amount, created_at').gte('created_at', yearStr + '-01-01').lte('created_at', yearStr + '-12-31'),
-    ])
     const salaries: Record<number, number> = {}
     const spending: Record<number, number> = {}
     for (let i = 1; i <= 12; i++) { salaries[i] = 0; spending[i] = 0 }
-    ;(payroll.data || []).forEach((r: any) => { const m = parseInt(r.payroll_month?.slice(5, 7)); if (m) salaries[m] += r.net_salary || 0 })
-    const addSpend = (rows: any[], dateField: string) => rows.forEach((r: any) => { const m = parseInt(r[dateField]?.slice(5, 7)); if (m) spending[m] += r.amount || 0 })
-    addSpend(expenses.data || [], 'expense_date')
-    addSpend(fuel.data || [], 'created_at')
-    addSpend(maint.data || [], 'created_at')
-    addSpend(delivery.data || [], 'created_at')
+
+    if (canView(perms, 'payroll')) {
+      const { data: payroll } = await supabase.from('payroll_records').select('payroll_month, net_salary').gte('payroll_month', yearStr + '-01').lte('payroll_month', yearStr + '-12')
+      ;(payroll || []).forEach((r: any) => { const m = parseInt(r.payroll_month?.slice(5, 7)); if (m) salaries[m] += r.net_salary || 0 })
+    }
+    if (canView(perms, 'finance')) {
+      const [expenses, fuel, maint, delivery] = await Promise.all([
+        supabase.from('expenses').select('amount, expense_date').gte('expense_date', yearStr + '-01-01').lte('expense_date', yearStr + '-12-31'),
+        supabase.from('fuel_receipts').select('amount, created_at').gte('created_at', yearStr + '-01-01').lte('created_at', yearStr + '-12-31'),
+        supabase.from('maintenance_receipts').select('amount, created_at').gte('created_at', yearStr + '-01-01').lte('created_at', yearStr + '-12-31'),
+        supabase.from('delivery_receipts').select('amount, created_at').gte('created_at', yearStr + '-01-01').lte('created_at', yearStr + '-12-31'),
+      ])
+      const addSpend = (rows: any[], dateField: string) => rows.forEach((r: any) => { const m = parseInt(r[dateField]?.slice(5, 7)); if (m) spending[m] += r.amount || 0 })
+      addSpend(expenses.data || [], 'expense_date')
+      addSpend(fuel.data || [], 'created_at')
+      addSpend(maint.data || [], 'created_at')
+      addSpend(delivery.data || [], 'created_at')
+    }
     setMiniChart(MONTHS_SHORT.map((label, i) => ({ month: label, 'الرواتب': salaries[i + 1], 'المصروفات': spending[i + 1] })))
   }
 
@@ -411,6 +447,7 @@ export default function Home() {
   )
 
   const sidebarWidth = sidebarCollapsed ? 72 : 240
+  const dashboardHasContent = canView(perms, 'employees') || canView(perms, 'tasks') || canView(perms, 'finance') || canView(perms, 'visa') || canView(perms, 'reports')
 
   return (
     <div style={{minHeight:'100vh',background:'var(--color-canvas)',fontFamily:'var(--font-sans)',direction:'rtl',display:'flex'}}>
@@ -433,11 +470,7 @@ export default function Home() {
         {/* القوائم */}
         <nav style={{flex:1,overflowY:'auto',padding:'12px 8px'}}>
           {navGroups.map((group, gi) => {
-            const visibleItems = group.items.filter(item => {
-              if (item.id === 'dashboard') return true
-              if (EDITOR_ONLY.includes(item.id)) return userRole === 'editor'
-              return canView(perms, item.id)
-            })
+            const visibleItems = group.items.filter(item => isSectionAllowed(item.id))
             if (visibleItems.length === 0) return null
             return (
               <div key={gi} style={{marginBottom:14}}>
@@ -515,17 +548,25 @@ export default function Home() {
         {/* المحتوى */}
         <div style={{flex:1}}>
 
-          {/* لوحة المعلومات */}
-          {activeSection === 'dashboard' && (
+          {/* لوحة المعلومات — قسم كباقي الأقسام، تُخفى/تُظهر عبر الصلاحيات */}
+          {activeSection === 'dashboard' && canView(perms, 'dashboard') && (
             <div style={{padding:'28px 24px',maxWidth:1100,margin:'0 auto'}}>
               <div style={{marginBottom:'var(--space-6)'}}>
-                <h2 style={{margin:'0 0 4px',fontSize:'var(--text-xl)',fontWeight:'var(--weight-bold)',color:'var(--color-sidebar-bg)'}}>مرحباً بك 👋</h2>
-                <p style={{margin:0,fontSize:'var(--text-sm)',color:'var(--color-text-muted)'}}>نظرة عامة سريعة على المنصة — {new Date().toLocaleDateString('ar-IQ', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
+                <h2 style={{margin:'0 0 4px',fontSize:'var(--text-xl)',fontWeight:'var(--weight-bold)',color:'var(--color-sidebar-bg)'}}>
+                  {dashboardHasContent ? 'مرحباً بك 👋' : `مرحباً ${displayName || user.email} 👋`}
+                </h2>
+                <p style={{margin:0,fontSize:'var(--text-sm)',color:'var(--color-text-muted)'}}>
+                  {dashboardHasContent
+                    ? `نظرة عامة سريعة على المنصة — ${new Date().toLocaleDateString('ar-IQ', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}`
+                    : 'استخدم القائمة الجانبية للتنقل بين أقسامك'}
+                </p>
               </div>
 
+              {dashboardHasContent && (
+              <>
               {/* بطاقات إحصائية سريعة */}
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:16,marginBottom:'var(--space-8)'}}>
-                {userRole !== 'accountant' && (
+                {canView(perms, 'employees') && (
                   <button onClick={()=>setActiveSection('employees')} style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-lg)',padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'var(--shadow-xs)',display:'flex',alignItems:'center',gap:14}}>
                     <div style={{background:'var(--color-info-surface)',borderRadius:'var(--radius-md)',width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('EMP','#7c3aed',24)}</div>
                     <div>
@@ -534,21 +575,25 @@ export default function Home() {
                     </div>
                   </button>
                 )}
-                <button onClick={()=>setActiveSection('tasks')} style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-lg)',padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'var(--shadow-xs)',display:'flex',alignItems:'center',gap:14}}>
-                  <div style={{background:'var(--color-danger-surface)',borderRadius:'var(--radius-md)',width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('TASK','#dc2626',24)}</div>
-                  <div>
-                    <div style={{fontSize:'var(--text-2xl)',fontWeight:'var(--weight-bold)',color:'var(--color-text)',fontVariantNumeric:'tabular-nums'}}>{dashStats.myPendingTasks}</div>
-                    <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>مهمة غير مكتملة لديك</div>
-                  </div>
-                </button>
-                <button onClick={()=>setActiveSection('finance')} style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-lg)',padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'var(--shadow-xs)',display:'flex',alignItems:'center',gap:14}}>
-                  <div style={{background:dashStats.lowFunds>0?'var(--color-warning-surface)':'var(--color-success-surface)',borderRadius:'var(--radius-md)',width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('FIN',dashStats.lowFunds>0?'#b45309':'#15803d',24)}</div>
-                  <div>
-                    <div style={{fontSize:'var(--text-2xl)',fontWeight:'var(--weight-bold)',color:dashStats.lowFunds>0?'var(--color-warning)':'var(--color-text)',fontVariantNumeric:'tabular-nums'}}>{dashStats.lowFunds}</div>
-                    <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>سلفة منخفضة الرصيد</div>
-                  </div>
-                </button>
-                {(userRole === 'editor' || userRole === 'admin') && (
+                {canView(perms, 'tasks') && (
+                  <button onClick={()=>setActiveSection('tasks')} style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-lg)',padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'var(--shadow-xs)',display:'flex',alignItems:'center',gap:14}}>
+                    <div style={{background:'var(--color-danger-surface)',borderRadius:'var(--radius-md)',width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('TASK','#dc2626',24)}</div>
+                    <div>
+                      <div style={{fontSize:'var(--text-2xl)',fontWeight:'var(--weight-bold)',color:'var(--color-text)',fontVariantNumeric:'tabular-nums'}}>{dashStats.myPendingTasks}</div>
+                      <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>مهمة غير مكتملة لديك</div>
+                    </div>
+                  </button>
+                )}
+                {canView(perms, 'finance') && (
+                  <button onClick={()=>setActiveSection('finance')} style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-lg)',padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'var(--shadow-xs)',display:'flex',alignItems:'center',gap:14}}>
+                    <div style={{background:dashStats.lowFunds>0?'var(--color-warning-surface)':'var(--color-success-surface)',borderRadius:'var(--radius-md)',width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('FIN',dashStats.lowFunds>0?'#b45309':'#15803d',24)}</div>
+                    <div>
+                      <div style={{fontSize:'var(--text-2xl)',fontWeight:'var(--weight-bold)',color:dashStats.lowFunds>0?'var(--color-warning)':'var(--color-text)',fontVariantNumeric:'tabular-nums'}}>{dashStats.lowFunds}</div>
+                      <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>سلفة منخفضة الرصيد</div>
+                    </div>
+                  </button>
+                )}
+                {canView(perms, 'visa') && (
                   <button onClick={()=>setActiveSection('visa')} style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-lg)',padding:'18px 20px',cursor:'pointer',textAlign:'right',boxShadow:'var(--shadow-xs)',display:'flex',alignItems:'center',gap:14}}>
                     <div style={{background:(visaAlerts.touristViolated+visaAlerts.annualViolated)>0?'var(--color-danger-surface)':'var(--color-warning-surface)',borderRadius:'var(--radius-md)',width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center'}}>{iconSvg('VISA',(visaAlerts.touristViolated+visaAlerts.annualViolated)>0?'#dc2626':'#b45309',24)}</div>
                     <div>
@@ -560,7 +605,7 @@ export default function Home() {
               </div>
 
               {/* تنبيهات المهام */}
-              {(taskAlerts.unseen > 0 || taskAlerts.overdue > 0) && (
+              {canView(perms, 'tasks') && (taskAlerts.unseen > 0 || taskAlerts.overdue > 0) && (
                 <div style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-accent-border)',borderRadius:'var(--radius-xl)',padding:'20px 24px',marginBottom:'var(--space-5)',boxShadow:'var(--shadow-xs)'}}>
                   <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
                     <span style={{width:10,height:10,borderRadius:'var(--radius-full)',background:'var(--blue-600)',display:'inline-block'}}></span>
@@ -582,7 +627,7 @@ export default function Home() {
               )}
 
               {/* تنبيهات التأشيرات */}
-              {(userRole === 'editor' || userRole === 'admin') && (() => {
+              {canView(perms, 'visa') && (() => {
                 const totalViolated = visaAlerts.touristViolated + visaAlerts.annualViolated
                 const totalWarning = visaAlerts.touristWarning + visaAlerts.annualWarning
                 if (totalViolated === 0 && totalWarning === 0) return null
@@ -619,16 +664,18 @@ export default function Home() {
               })()}
 
               {/* نظرة سريعة على السنة */}
-              {userRole !== 'accountant' && miniChart.length > 0 && (
+              {canView(perms, 'reports') && miniChart.length > 0 && (
                 <div style={{background:'var(--color-surface)',border:'var(--border-width-thin) solid var(--color-border)',borderRadius:'var(--radius-xl)',padding:'20px 24px',marginBottom:'var(--space-5)',boxShadow:'var(--shadow-xs)'}}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:10}}>
                     <div style={{display:'flex',alignItems:'center',gap:10}}>
                       <span style={{width:10,height:10,borderRadius:'var(--radius-full)',background:'var(--color-info)',display:'inline-block'}}></span>
                       <h2 style={{margin:0,fontSize:'var(--text-md)',fontWeight:'var(--weight-bold)',color:'var(--color-text)'}}>نظرة سريعة على سنة {new Date().getFullYear()}</h2>
                     </div>
-                    <Button variant="info-soft" size="sm" onClick={()=>setActiveSection('reports')}>
-                      عرض التقرير الكامل ←
-                    </Button>
+                    {canView(perms, 'reports') && (
+                      <Button variant="info-soft" size="sm" onClick={()=>setActiveSection('reports')}>
+                        عرض التقرير الكامل ←
+                      </Button>
+                    )}
                   </div>
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={miniChart} margin={{top:5,right:5,bottom:5,left:5}}>
@@ -642,29 +689,39 @@ export default function Home() {
                   </ResponsiveContainer>
                 </div>
               )}
+              </>
+              )}
+            </div>
+          )}
+
+          {/* دفاع في العمق: قسم غير مصرَّح به وصل إليه activeSection لأي سبب (يشمل لوحة المعلومات نفسها إن أُخفيت) */}
+          {!isSectionAllowed(activeSection) && (
+            <div style={{textAlign:'center',padding:'80px 24px'}}>
+              <div style={{fontSize:'var(--text-lg)',fontWeight:'var(--weight-bold)',color:'var(--color-danger)',marginBottom:8}}>ليس لديك صلاحية الوصول لهذا القسم</div>
+              <div style={{fontSize:'var(--text-sm)',color:'var(--color-text-muted)'}}>جارٍ إعادة التوجيه...</div>
             </div>
           )}
 
           {/* الأقسام */}
-          {activeSection === 'tasks' && user && userRole && (
+          {activeSection === 'tasks' && user && userRole && canView(perms, 'tasks') && (
             <Tasks currentUserId={user.id} currentUserRole={userRole} currentUserEmail={user.email || ''} canEditTasks={canEdit(perms, 'tasks')} />
           )}
-          {activeSection === 'documents' && <Documents readOnly={!canEdit(perms, 'documents')} />}
-          {activeSection === 'custody' && <Custody readOnly={!canEdit(perms, 'custody')} />}
-          {activeSection === 'contracts' && <Contracts readOnly={!canEdit(perms, 'contracts')} />}
-          {activeSection === 'overtime' && <Overtime readOnly={!canEdit(perms, 'overtime')} />}
-          {activeSection === 'recruitment' && <Recruitment readOnly={!canEdit(perms, 'recruitment')} />}
-          {activeSection === 'reports' && <Reports />}
+          {activeSection === 'documents' && canView(perms, 'documents') && <Documents readOnly={!canEdit(perms, 'documents')} />}
+          {activeSection === 'custody' && canView(perms, 'custody') && <Custody readOnly={!canEdit(perms, 'custody')} />}
+          {activeSection === 'contracts' && canView(perms, 'contracts') && <Contracts readOnly={!canEdit(perms, 'contracts')} />}
+          {activeSection === 'overtime' && canView(perms, 'overtime') && <Overtime readOnly={!canEdit(perms, 'overtime')} />}
+          {activeSection === 'recruitment' && canView(perms, 'recruitment') && <Recruitment readOnly={!canEdit(perms, 'recruitment')} />}
+          {activeSection === 'reports' && canView(perms, 'reports') && <Reports />}
           {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
           {activeSection === 'users' && userRole === 'editor' && user && <Users currentUserId={user.id} />}
-          {activeSection === 'employees' && <Employees readOnly={!canEdit(perms, 'employees')} />}
-          {activeSection === 'attendance' && <Attendance readOnly={!canEdit(perms, 'attendance')} userRole={userRole || ''} />}
-          {activeSection === 'fingerprint' && <Fingerprint readOnly={!canEdit(perms, 'fingerprint')} />}
-          {activeSection === 'visa' && <Visa readOnly={!canEdit(perms, 'visa')} />}
-          {activeSection === 'payroll' && <Payroll readOnly={!canEdit(perms, 'payroll')} userRole={userRole || ''} />}
+          {activeSection === 'employees' && canView(perms, 'employees') && <Employees readOnly={!canEdit(perms, 'employees')} />}
+          {activeSection === 'attendance' && canView(perms, 'attendance') && <Attendance readOnly={!canEdit(perms, 'attendance')} userRole={userRole || ''} />}
+          {activeSection === 'fingerprint' && canView(perms, 'fingerprint') && <Fingerprint readOnly={!canEdit(perms, 'fingerprint')} />}
+          {activeSection === 'visa' && canView(perms, 'visa') && <Visa readOnly={!canEdit(perms, 'visa')} />}
+          {activeSection === 'payroll' && canView(perms, 'payroll') && <Payroll readOnly={!canEdit(perms, 'payroll')} userRole={userRole || ''} />}
 
           {/* قسم الحسابات: مصاريف + وصولات */}
-          {activeSection === 'finance' && (
+          {activeSection === 'finance' && canView(perms, 'finance') && (
             <div>
               <div style={{margin:'24px 24px 0',display:'flex',gap:6,background:'var(--color-border)',padding:4,borderRadius:'var(--radius-lg)',width:'fit-content'}}>
                 <button onClick={()=>setFinanceTab('expenses')}
