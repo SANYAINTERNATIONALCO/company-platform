@@ -83,6 +83,14 @@ function normalizeHeaderText(s: string) {
   return s.replace(/[ً-ٰٟ]/g, '').replace(/\s+/g, ' ').trim()
 }
 
+function formatDateDMY(dateStr: string | null | undefined): string {
+  if (!dateStr) return ''
+  const parts = dateStr.split('-')
+  if (parts.length !== 3) return ''
+  const [y, m, d] = parts
+  return `${d}/${m}/${y}`
+}
+
 const categories = [
   { key: 'total', label: 'إجمالي الأجانب', icon: '👥', color: '#1e40af', bg: '#dbeafe' },
   { key: 'multiple_visa', label: 'حاصلون على فيزا متعددة', icon: '✅', color: '#15803d', bg: '#dcfce7' },
@@ -132,6 +140,14 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   const [cycleSaving, setCycleSaving] = useState(false)
   const [stageInputs, setStageInputs] = useState<Record<string, any>>({})
 
+  // ===== إضافة دفعة دورات مغادرة وعودة =====
+  const [showCycleBatchForm, setShowCycleBatchForm] = useState(false)
+  const [cycleBatchCommon, setCycleBatchCommon] = useState({ nationality: '', group_name: '', visa_expired_date: '' })
+  const [cycleBatchRows, setCycleBatchRows] = useState<BatchRow[]>(Array.from({ length: 10 }, () => ({ full_name: '', passport_number: '' })))
+  const [cycleBatchSaving, setCycleBatchSaving] = useState(false)
+  const cycleBatchNameRefs = useRef<(HTMLInputElement | null)[]>([])
+  const prevCycleBatchRowsLen = useRef(cycleBatchRows.length)
+
   // ===== toast للحفظ اللاصق =====
   const [toast, setToast] = useState<string | null>(null)
   const touristNameRef = useRef<HTMLInputElement>(null)
@@ -162,6 +178,13 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   }, [batchRows.length])
 
   useEffect(() => {
+    if (cycleBatchRows.length > prevCycleBatchRowsLen.current) {
+      cycleBatchNameRefs.current[prevCycleBatchRowsLen.current]?.focus()
+    }
+    prevCycleBatchRowsLen.current = cycleBatchRows.length
+  }, [cycleBatchRows.length])
+
+  useEffect(() => {
     const t = new Date().toISOString().split('T')[0]
     setTodayStr(t)
     loadStats()
@@ -178,19 +201,28 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   }
 
   function cycleDaysInfo(c: VisaCycle) {
-    const today = new Date(new Date().toDateString())
+    const today = new Date(); today.setHours(0,0,0,0)
     // فترة السماح: 60 يوماً من انتهاء الفيزا
-    const graceEnd = new Date(c.visa_expired_date)
+    const graceEnd = new Date(c.visa_expired_date); graceEnd.setHours(0,0,0,0)
     graceEnd.setDate(graceEnd.getDate() + 60)
     const graceDaysLeft = Math.ceil((graceEnd.getTime() - today.getTime()) / 86400000)
     // فيزا المغادرة: 10 أيام من الإصدار
     let exitDaysLeft: number | null = null
     if (c.exit_visa_issued_date) {
-      const exitEnd = new Date(c.exit_visa_issued_date)
+      const exitEnd = new Date(c.exit_visa_issued_date); exitEnd.setHours(0,0,0,0)
       exitEnd.setDate(exitEnd.getDate() + 10)
       exitDaysLeft = Math.ceil((exitEnd.getTime() - today.getTime()) / 86400000)
     }
     return { graceDaysLeft, graceEnd, exitDaysLeft }
+  }
+
+  function cycleStatusLabel(c: VisaCycle): string {
+    if (c.status === 'completed') return 'مكتملة'
+    const info = cycleDaysInfo(c)
+    if (c.status === 'grace_period') return info.graceDaysLeft <= 0 ? `تجاوز فترة السماح (${Math.abs(info.graceDaysLeft)} يوم)` : `فترة سماح (${info.graceDaysLeft} يوم متبقي)`
+    if (c.status === 'exit_visa_issued') return (info.exitDaysLeft !== null && info.exitDaysLeft <= 0) ? 'فيزا المغادرة منتهية' : `فيزا مغادرة صادرة (${info.exitDaysLeft} يوم متبقي)`
+    if (c.status === 'departed') return 'غادر العراق'
+    return c.status
   }
 
   async function createCycle() {
@@ -212,6 +244,54 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
       await loadCycles()
     }
     setCycleSaving(false)
+  }
+
+  function addCycleBatchRows(n: number) {
+    setCycleBatchRows(prev => [...prev, ...Array.from({ length: n }, () => ({ full_name: '', passport_number: '' }))])
+  }
+
+  function updateCycleBatchRow(idx: number, field: keyof BatchRow, value: string) {
+    setCycleBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r))
+  }
+
+  async function saveCycleBatch() {
+    const rowsToSave = cycleBatchRows.filter(r => r.full_name.trim() !== '')
+    if (rowsToSave.length === 0) { alert('لا توجد أسطر معبأة للحفظ'); return }
+    if (!cycleBatchCommon.group_name.trim() || !cycleBatchCommon.visa_expired_date) { alert('يرجى تعبئة اسم المجموعة وتاريخ انتهاء الفيزا'); return }
+
+    const passportsInBatch = rowsToSave.map(r => r.passport_number.trim()).filter(Boolean)
+    const seen = new Set<string>()
+    const dupInBatch = new Set<string>()
+    passportsInBatch.forEach(p => { if (seen.has(p)) dupInBatch.add(p); else seen.add(p) })
+    const existingPassports = new Set(cycles.filter(c => c.status !== 'completed').map(c => (c.passport_number || '').trim()).filter(Boolean))
+    const dupExisting = Array.from(new Set(passportsInBatch.filter(p => existingPassports.has(p))))
+    if (dupInBatch.size > 0 || dupExisting.length > 0) {
+      const parts: string[] = []
+      if (dupInBatch.size > 0) parts.push(`مكررة داخل الدفعة: ${Array.from(dupInBatch).join('، ')}`)
+      if (dupExisting.length > 0) parts.push(`موجودة مسبقاً في دورة نشطة: ${dupExisting.join('، ')}`)
+      if (!confirm(`تحذير — أرقام جوازات ${parts.join(' | ')}. هل تريد المتابعة بالحفظ؟`)) return
+    }
+
+    setCycleBatchSaving(true)
+    const groupName = cycleBatchCommon.group_name.trim()
+    const payload = rowsToSave.map(r => ({
+      person_name: r.full_name.trim(),
+      passport_number: r.passport_number.trim() || null,
+      nationality: cycleBatchCommon.nationality.trim() || null,
+      visa_expired_date: cycleBatchCommon.visa_expired_date,
+      group_name: groupName,
+      status: 'grace_period',
+    }))
+    const { error } = await supabase.from('visa_cycles').insert(payload)
+    if (error) { alert('خطأ: ' + error.message); setCycleBatchSaving(false); return }
+    await logActivity('إضافة دفعة دورات مغادرة وعودة', 'visa', `إنشاء ${rowsToSave.length} دورة في مجموعة ${groupName}`)
+    setCycleBatchRows(Array.from({ length: 10 }, () => ({ full_name: '', passport_number: '' })))
+    setCycleBatchCommon({ nationality: '', group_name: '', visa_expired_date: '' })
+    setShowCycleBatchForm(false)
+    setCycleBatchSaving(false)
+    await loadCycles()
+    setCycleView('active')
+    alert(`تم إنشاء ${rowsToSave.length} دورة في المجموعة ${groupName}`)
   }
 
   async function registerExitVisa(c: VisaCycle) {
@@ -515,6 +595,87 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     XLSX.writeFile(workbook, 'قالب استيراد التأشيرات.xlsx')
   }
 
+  // ===== تصدير Excel =====
+  function writeSheet(rows: (string | number)[][], headers: string[], sheetName: string, fileName: string) {
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
+    XLSX.writeFile(workbook, fileName)
+  }
+
+  const touristExportHeaders = ['الاسم', 'رقم الجواز', 'الجنسية', 'تاريخ الدخول', 'المدة', 'تاريخ الانتهاء', 'الأيام المتبقية', 'الحالة']
+  function buildTouristRows(list: TouristVisa[]): (string | number)[][] {
+    return list.map(v => {
+      const vs = getTouristStatus(v)
+      return [v.full_name, v.passport_number || '', v.nationality || '', formatDateDMY(v.entry_date), v.visa_duration ? `${v.visa_duration} يوم` : '', formatDateDMY(v.expiry_date), getDaysRemaining(v.expiry_date), vs.label]
+    })
+  }
+
+  const annualExportHeaders = ['الاسم', 'رقم الجواز', 'الجنسية', 'تاريخ الدخول', 'تاريخ الانتهاء', 'الأيام المتبقية', 'الحالة']
+  function buildAnnualRows(list: AnnualVisa[]): (string | number)[][] {
+    return list.map(v => {
+      const vs = getAnnualStatus(v)
+      return [v.full_name, v.passport_number || '', v.nationality || '', formatDateDMY(v.entry_date), formatDateDMY(v.expiry_date), getDaysRemaining(v.expiry_date), vs.label]
+    })
+  }
+
+  const cycleExportHeaders = ['الاسم', 'رقم الجواز', 'الجنسية', 'المجموعة', 'تاريخ انتهاء الفيزا', 'متبقي فترة السماح', 'تاريخ فيزا المغادرة', 'متبقي فيزا المغادرة', 'الفيزا الجديدة', 'تاريخ المغادرة', 'تاريخ العودة', 'الحالة']
+  function buildCycleRows(list: VisaCycle[]): (string | number)[][] {
+    return list.map(c => {
+      const info = cycleDaysInfo(c)
+      const newVisaText = c.new_visa_obtained ? `نعم - ${c.new_visa_type || ''} ${c.new_visa_number || ''}`.trim() : 'لا'
+      return [
+        c.person_name,
+        c.passport_number || '',
+        c.nationality || '',
+        c.group_name || '',
+        formatDateDMY(c.visa_expired_date),
+        c.status === 'grace_period' ? info.graceDaysLeft : '',
+        c.exit_visa_issued_date ? formatDateDMY(c.exit_visa_issued_date) : '',
+        (c.status === 'exit_visa_issued' && info.exitDaysLeft !== null) ? info.exitDaysLeft : '',
+        newVisaText,
+        c.departure_date ? formatDateDMY(c.departure_date) : '',
+        c.return_date ? formatDateDMY(c.return_date) : '',
+        cycleStatusLabel(c),
+      ]
+    })
+  }
+
+  function exportTouristExcel() {
+    writeSheet(buildTouristRows(filteredTourist), touristExportHeaders, 'السياحية', `التأشيرات_السياحية_${todayStr}.xlsx`)
+  }
+
+  function exportAnnualExcel() {
+    writeSheet(buildAnnualRows(filteredAnnual), annualExportHeaders, 'السنوية', `التأشيرات_السنوية_${todayStr}.xlsx`)
+  }
+
+  function exportCyclesExcel(list: VisaCycle[], view: 'active' | 'completed') {
+    writeSheet(buildCycleRows(list), cycleExportHeaders, view === 'active' ? 'دورات نشطة' : 'دورات مكتملة', `التأشيرات_دورات_المغادرة_والعودة_${todayStr}.xlsx`)
+  }
+
+  function exportStatsExcel() {
+    const headers = ['الفئة', 'صينيين', 'باكستانيين', 'الإجمالي']
+    const rows: (string | number)[][] = categories.map(cat => [cat.label, getCount(cat.key, 'chinese'), getCount(cat.key, 'pakistani'), getTotal(cat.key)])
+    rows.push(['إجمالي الأجانب في الشركة', '', '', grandTotal])
+    rows.push(['إجمالي المخالفين (شامل التأشيرات)', '', '', totalViolatorsCombined])
+    writeSheet(rows, headers, 'إحصائيات', `التأشيرات_احصائيات_${todayStr}.xlsx`)
+  }
+
+  async function exportComprehensiveExcel() {
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([touristExportHeaders, ...buildTouristRows(touristVisas)]), 'السياحية')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([annualExportHeaders, ...buildAnnualRows(annualVisas)]), 'السنوية')
+    const cyclesList = cycles.filter(c => cycleView === 'active' ? c.status !== 'completed' : c.status === 'completed')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([cycleExportHeaders, ...buildCycleRows(cyclesList)]), cycleView === 'active' ? 'دورات نشطة' : 'دورات مكتملة')
+    const statsHeaders = ['الفئة', 'صينيين', 'باكستانيين', 'الإجمالي']
+    const statsRows: (string | number)[][] = categories.map(cat => [cat.label, getCount(cat.key, 'chinese'), getCount(cat.key, 'pakistani'), getTotal(cat.key)])
+    statsRows.push(['إجمالي الأجانب في الشركة', '', '', grandTotal])
+    statsRows.push(['إجمالي المخالفين (شامل التأشيرات)', '', '', totalViolatorsCombined])
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([statsHeaders, ...statsRows]), 'إحصائيات')
+    XLSX.writeFile(workbook, `التأشيرات_شامل_${todayStr}.xlsx`)
+    await logActivity('تصدير شامل لبيانات التأشيرات', 'visa', 'تصدير ملف Excel شامل بأربع أوراق (سياحية، سنوية، دورات، إحصائيات)')
+  }
+
   async function handleExcelFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -702,6 +863,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   const inputStyle = { width:'100%', padding:'9px 12px', borderRadius:8, border:'2px solid #d1d5db', fontSize:13, boxSizing:'border-box' as const, color:'#111827', background:'#fff', marginBottom:10 }
 
   const batchFilledCount = useMemo(() => batchRows.filter(r => r.full_name.trim() !== '').length, [batchRows])
+  const cycleBatchFilledCount = useMemo(() => cycleBatchRows.filter(r => r.full_name.trim() !== '').length, [cycleBatchRows])
   const batchImportCounts = useMemo(() => {
     const counts = { new: 0, duplicate: 0, incomplete: 0 }
     excelPreview.forEach(r => { counts[r.statusTag]++ })
@@ -816,7 +978,17 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
           <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden',marginBottom:20}}>
             <div style={{padding:'16px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
               <h2 style={{margin:0,fontSize:17,fontWeight:700,color:'#111827'}}>إحصائيات الأجانب والتأشيرات</h2>
-              {readOnly && <span style={{fontSize:12,background:'#fef9c3',color:'#b45309',padding:'3px 10px',borderRadius:20,fontWeight:600}}>قراءة فقط</span>}
+              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                {readOnly && <span style={{fontSize:12,background:'#fef9c3',color:'#b45309',padding:'3px 10px',borderRadius:20,fontWeight:600}}>قراءة فقط</span>}
+                <button onClick={exportStatsExcel}
+                  style={{background:'#eff6ff',color:'#1d4ed8',border:'1px solid #93c5fd',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  ⬇ تصدير Excel
+                </button>
+                <button onClick={exportComprehensiveExcel}
+                  style={{background:'#ede9fe',color:'#7c3aed',border:'1px solid #c4b5fd',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  ⬇ تصدير شامل
+                </button>
+              </div>
             </div>
             <div style={{padding:'20px'}}>
               <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:12}}>
@@ -1004,6 +1176,10 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
               <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                 <input placeholder="بحث بالاسم أو رقم الجواز..." value={touristSearch} onChange={e=>setTouristSearch(e.target.value)}
                   style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:13,color:'#111827',minWidth:200}}/>
+                <button onClick={exportTouristExcel}
+                  style={{background:'#eff6ff',color:'#1d4ed8',border:'1px solid #93c5fd',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  ⬇ تصدير Excel
+                </button>
                 {!readOnly && touristSelected.length > 0 && (
                   <button onClick={deleteSelectedTourist}
                     style={{background:'#dc2626',color:'#fff',border:'none',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>
@@ -1157,6 +1333,10 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
               <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                 <input placeholder="بحث بالاسم أو رقم الجواز..." value={annualSearch} onChange={e=>setAnnualSearch(e.target.value)}
                   style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:13,color:'#111827',minWidth:200}}/>
+                <button onClick={exportAnnualExcel}
+                  style={{background:'#eff6ff',color:'#1d4ed8',border:'1px solid #93c5fd',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  ⬇ تصدير Excel
+                </button>
                 {!readOnly && annualSelected.length > 0 && (
                   <button onClick={deleteSelectedAnnual}
                     style={{background:'#dc2626',color:'#fff',border:'none',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>
@@ -1321,11 +1501,21 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                 </div>
                 <input placeholder="بحث بالاسم أو الجواز..." value={cycleSearch} onChange={e=>setCycleSearch(e.target.value)}
                   style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#111827',minWidth:190}}/>
+                <button onClick={()=>exportCyclesExcel(shownList, cycleView)}
+                  style={{background:'#eff6ff',color:'#1d4ed8',border:'1px solid #93c5fd',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  ⬇ تصدير Excel
+                </button>
                 {!readOnly && cycleView === 'active' && (
-                  <button onClick={()=>setShowCycleForm(!showCycleForm)}
-                    style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:13,fontWeight:600,marginRight:'auto'}}>
-                    {showCycleForm ? 'إلغاء' : '+ بدء دورة جديدة'}
-                  </button>
+                  <div style={{display:'flex',gap:8,marginRight:'auto'}}>
+                    <button onClick={()=>{ setShowCycleForm(!showCycleForm); setShowCycleBatchForm(false) }}
+                      style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                      {showCycleForm ? 'إلغاء' : '+ بدء دورة جديدة'}
+                    </button>
+                    <button onClick={()=>{ setShowCycleBatchForm(!showCycleBatchForm); setShowCycleForm(false) }}
+                      style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                      {showCycleBatchForm ? 'إلغاء' : '+ إضافة دفعة'}
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1365,6 +1555,72 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                   <button onClick={createCycle} disabled={cycleSaving}
                     style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'9px 22px',cursor:'pointer',fontSize:13,fontWeight:600}}>
                     {cycleSaving ? 'جارٍ الحفظ...' : 'بدء الدورة (تبدأ فترة السماح 60 يوماً)'}
+                  </button>
+                </div>
+              )}
+
+              {/* نموذج إضافة دفعة دورات */}
+              {showCycleBatchForm && !readOnly && (
+                <div style={{padding:'18px 20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:14,maxWidth:700}}>
+                    <div>
+                      <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الجنسية</label>
+                      <input value={cycleBatchCommon.nationality} onChange={e=>setCycleBatchCommon({...cycleBatchCommon,nationality:e.target.value})} placeholder="مثال: صيني" style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
+                    </div>
+                    <div>
+                      <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>اسم المجموعة *</label>
+                      <input list="cycle-groups-batch" value={cycleBatchCommon.group_name} onChange={e=>setCycleBatchCommon({...cycleBatchCommon,group_name:e.target.value})} placeholder="اسم مجموعة موجودة أو جديدة" style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
+                      <datalist id="cycle-groups-batch">
+                        {[...new Set(cycles.filter(x=>x.group_name&&x.status!=='completed').map(x=>x.group_name!))].map(g=><option key={g} value={g}/>)}
+                      </datalist>
+                    </div>
+                    <div>
+                      <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ انتهاء الفيزا *</label>
+                      <input type="date" value={cycleBatchCommon.visa_expired_date} onChange={e=>setCycleBatchCommon({...cycleBatchCommon,visa_expired_date:e.target.value})} style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
+                    </div>
+                  </div>
+
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}}>
+                    <span style={{fontSize:13,fontWeight:700,color:'#7c3aed',background:'#ede9fe',padding:'6px 14px',borderRadius:20}}>
+                      تم تعبئة {cycleBatchFilledCount} من {cycleBatchRows.length} سطر
+                    </span>
+                    <button onClick={()=>addCycleBatchRows(10)}
+                      style={{background:'#f3f4f6',color:'#374151',border:'1px solid #d1d5db',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                      + إضافة 10 أسطر
+                    </button>
+                  </div>
+
+                  <div style={{overflowX:'auto',border:'1px solid #e5e7eb',borderRadius:10,marginBottom:14}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                      <thead>
+                        <tr style={{background:'#f3f4f6'}}>
+                          <th style={{padding:'8px 12px',borderBottom:'2px solid #e5e7eb',width:40,color:'#6b7280'}}>#</th>
+                          <th style={{padding:'8px 12px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>الاسم</th>
+                          <th style={{padding:'8px 12px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>رقم الجواز</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cycleBatchRows.map((row,idx)=>(
+                          <tr key={idx} style={{borderBottom:'1px solid #f3f4f6'}}>
+                            <td style={{padding:'6px 12px',color:'#9ca3af',fontSize:12,textAlign:'center'}}>{idx+1}</td>
+                            <td style={{padding:'6px 8px'}}>
+                              <input ref={el=>{cycleBatchNameRefs.current[idx]=el}} value={row.full_name} onChange={e=>updateCycleBatchRow(idx,'full_name',e.target.value)}
+                                style={{width:'100%',padding:'7px 10px',borderRadius:6,border:'1px solid #d1d5db',fontSize:13,color:'#111827',boxSizing:'border-box'}}/>
+                            </td>
+                            <td style={{padding:'6px 8px'}}>
+                              <input value={row.passport_number} onChange={e=>updateCycleBatchRow(idx,'passport_number',e.target.value)}
+                                onKeyDown={e=>{ if(e.key==='Enter' && idx===cycleBatchRows.length-1){ e.preventDefault(); addCycleBatchRows(1) } }}
+                                style={{width:'100%',padding:'7px 10px',borderRadius:6,border:'1px solid #d1d5db',fontSize:13,color:'#111827',boxSizing:'border-box',direction:'ltr',textAlign:'right'}}/>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <button onClick={saveCycleBatch} disabled={cycleBatchSaving || cycleBatchFilledCount===0}
+                    style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600,opacity:(cycleBatchSaving||cycleBatchFilledCount===0)?0.6:1}}>
+                    {cycleBatchSaving ? 'جارٍ الحفظ...' : `حفظ الكل (${cycleBatchFilledCount})`}
                   </button>
                 </div>
               )}
