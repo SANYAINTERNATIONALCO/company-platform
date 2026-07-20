@@ -22,7 +22,7 @@ export const SECTIONS: { id: string; label: string }[] = [
 ]
 
 // أقسام تُتحقق من role === 'editor' حصراً ولا تدخل نظام الصلاحيات إطلاقاً
-export const EDITOR_ONLY = ['activity_log', 'users']
+export const EDITOR_ONLY = ['activity_log', 'users', 'backup']
 
 function allSectionsAt(level: PermLevel): Permissions {
   const p: Permissions = {}

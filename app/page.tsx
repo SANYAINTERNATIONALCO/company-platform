@@ -16,6 +16,7 @@ import Overtime from './components/Overtime'
 import Recruitment from './components/Recruitment'
 import Fingerprint from './components/Fingerprint'
 import Users from './components/Users'
+import Backup from './components/Backup'
 import Reports from './components/Reports'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { logActivity } from './logActivity'
@@ -249,6 +250,7 @@ export default function Home() {
       items: [
         { id: 'users', label: 'إدارة المستخدمين', icon: 'USERS' },
         { id: 'activity_log', label: 'سجل النشاطات', icon: 'LOG' },
+        { id: 'backup', label: 'النسخ الاحتياطي', icon: 'BACKUP' },
       ]
     },
   ]
@@ -270,6 +272,7 @@ export default function Home() {
     tasks: 'المهام',
     activity_log: 'سجل النشاطات',
     users: 'إدارة المستخدمين',
+    backup: 'النسخ الاحتياطي',
   }
 
   const iconSvg = (type: string, color: string, size: number = 20) => {
@@ -389,6 +392,13 @@ export default function Home() {
           <circle cx="9.5" cy="8" r="3.5" stroke={color} strokeWidth="1.8"/>
           <path d="M3.5 20c0-3.6 2.7-6.2 6-6.2s6 2.6 6 6.2" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
           <path d="M18 6.5v5M15.5 9h5" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+        </svg>
+      ),
+      BACKUP: (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M4 7c0-1.4 3.6-2.5 8-2.5s8 1.1 8 2.5-3.6 2.5-8 2.5-8-1.1-8-2.5z" stroke={color} strokeWidth="1.8"/>
+          <path d="M4 7v10c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V7" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+          <path d="M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
         </svg>
       ),
     }
@@ -714,6 +724,7 @@ export default function Home() {
           {activeSection === 'reports' && canView(perms, 'reports') && <Reports />}
           {activeSection === 'activity_log' && userRole === 'editor' && <ActivityLog />}
           {activeSection === 'users' && userRole === 'editor' && user && <Users currentUserId={user.id} />}
+          {activeSection === 'backup' && userRole === 'editor' && <Backup />}
           {activeSection === 'employees' && canView(perms, 'employees') && <Employees readOnly={!canEdit(perms, 'employees')} />}
           {activeSection === 'attendance' && canView(perms, 'attendance') && <Attendance readOnly={!canEdit(perms, 'attendance')} userRole={userRole || ''} />}
           {activeSection === 'fingerprint' && canView(perms, 'fingerprint') && <Fingerprint readOnly={!canEdit(perms, 'fingerprint')} />}
