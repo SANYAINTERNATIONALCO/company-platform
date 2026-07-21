@@ -5,7 +5,9 @@ import Attendance from './components/Attendance'
 import Finance from './components/Finance'
 import Receipts from './components/Receipts'
 import Visa from './components/Visa'
+import dynamic from 'next/dynamic'
 import Employees from './components/Employees'
+const OrgChart = dynamic(() => import('./components/OrgChart'), { ssr: false })
 import Payroll from './components/Payroll'
 import Tasks from './components/Tasks'
 import ActivityLog from './components/ActivityLog'
@@ -221,6 +223,7 @@ export default function Home() {
       items: [
         { id: 'recruitment', label: 'التوظيف', icon: 'RECRUIT' },
         { id: 'employees', label: 'الموظفين', icon: 'EMP' },
+        { id: 'org_chart', label: 'الهيكل التنظيمي', icon: 'ORG' },
         { id: 'contracts', label: 'العقود', icon: 'CONT' },
         { id: 'attendance', label: 'الحضور', icon: 'ATT' },
         { id: 'fingerprint', label: 'تقارير البصمة', icon: 'FP' },
@@ -258,6 +261,7 @@ export default function Home() {
   const sectionTitles: Record<string, string> = {
     dashboard: 'لوحة المعلومات',
     employees: 'الموظفين',
+    org_chart: 'الهيكل التنظيمي',
     attendance: 'الحضور',
     fingerprint: 'تقارير البصمة',
     payroll: 'الرواتب',
@@ -399,6 +403,14 @@ export default function Home() {
           <path d="M4 7c0-1.4 3.6-2.5 8-2.5s8 1.1 8 2.5-3.6 2.5-8 2.5-8-1.1-8-2.5z" stroke={color} strokeWidth="1.8"/>
           <path d="M4 7v10c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V7" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
           <path d="M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+        </svg>
+      ),
+      ORG: (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <rect x="8.5" y="2.5" width="7" height="5" rx="1.3" stroke={color} strokeWidth="1.8"/>
+          <rect x="2.5" y="16" width="7" height="5" rx="1.3" stroke={color} strokeWidth="1.8"/>
+          <rect x="14.5" y="16" width="7" height="5" rx="1.3" stroke={color} strokeWidth="1.8"/>
+          <path d="M12 7.5v4M6 16v-2a2 2 0 012-2h8a2 2 0 012 2v2M12 11.5H6M12 11.5h6" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       ),
     }
@@ -726,6 +738,7 @@ export default function Home() {
           {activeSection === 'users' && userRole === 'editor' && user && <Users currentUserId={user.id} />}
           {activeSection === 'backup' && userRole === 'editor' && <Backup />}
           {activeSection === 'employees' && canView(perms, 'employees') && <Employees readOnly={!canEdit(perms, 'employees')} />}
+          {activeSection === 'org_chart' && canView(perms, 'org_chart') && <OrgChart readOnly={!canEdit(perms, 'org_chart')} />}
           {activeSection === 'attendance' && canView(perms, 'attendance') && <Attendance readOnly={!canEdit(perms, 'attendance')} userRole={userRole || ''} />}
           {activeSection === 'fingerprint' && canView(perms, 'fingerprint') && <Fingerprint readOnly={!canEdit(perms, 'fingerprint')} />}
           {activeSection === 'visa' && canView(perms, 'visa') && <Visa readOnly={!canEdit(perms, 'visa')} />}
