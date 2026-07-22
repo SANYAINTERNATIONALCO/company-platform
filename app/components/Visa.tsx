@@ -384,33 +384,29 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     await loadCycles()
   }
 
-  // لا تُكتب status هنا إطلاقاً — الحالة الفعلية تُحسب دائماً من التاريخ+الوقت عبر computeActualStatus،
-  // وتُثبَّت في DB فقط عند وصول اللحظة الفعلية فعلاً (عبر الفحص الدوري في loadCycles)
-  async function registerDeparture(c: VisaCycle) {
-    const date = stageInputs[c.id]?.depDate
-    if (!date) { alert('يرجى تحديد تاريخ المغادرة'); return }
-    const time = stageInputs[c.id]?.depTime || nowTimeStr()
-    await supabase.from('visa_cycles').update({
-      departure_date: date,
-      departure_time: time,
-      departure_notes: stageInputs[c.id]?.depNotes || null,
-    }).eq('id', c.id)
-    await logActivity('تسجيل مغادرة', 'visa', `${c.person_name} — مغادرة مسجّلة بتاريخ ${date} الساعة ${time}`)
-    setStageInputs(prev => ({ ...prev, [c.id]: {} }))
-    await loadCycles()
-  }
+  // نموذج مغادرة/عودة مدمج — يظهر بمجرد صدور فيزا المغادرة بلا أي شرط زمني (رحلة ذهاب وعودة قد تُحجز معاً
+  // مسبقاً)، ويُحفظ ما أُدخل بضغطة واحدة. لا تُكتب status هنا إطلاقاً — الحالة الفعلية تُحسب دائماً من
+  // التاريخ+الوقت عبر computeActualStatus، وتُثبَّت في DB فقط عند وصول اللحظة الفعلية (الفحص الدوري بـloadCycles)
+  async function saveDepartureReturn(c: VisaCycle) {
+    const si = stageInputs[c.id] || {}
+    const depDate = si.depDate ?? c.departure_date ?? ''
+    if (!depDate) { alert('يرجى تحديد تاريخ المغادرة على الأقل'); return }
+    const depTime = si.depTime ?? c.departure_time ?? nowTimeStr()
+    const depNotes = si.depNotes ?? c.departure_notes ?? ''
+    const retDate = si.retDate ?? c.return_date ?? ''
+    const retTime = si.retTime ?? c.return_time ?? nowTimeStr()
 
-  async function registerReturn(c: VisaCycle) {
-    const date = stageInputs[c.id]?.retDate
-    if (!date) { alert('يرجى تحديد تاريخ العودة'); return }
-    const time = stageInputs[c.id]?.retTime || nowTimeStr()
-    const isFuture = new Date(`${date}T${time}`).getTime() > Date.now()
-    const msg = isFuture
-      ? `سيتم تسجيل موعد عودة مجدول لـ ${c.person_name} بتاريخ ${date} الساعة ${time}. ستكتمل الدورة تلقائياً عند وصول هذا الموعد فعلياً.`
-      : `تسجيل عودة ${c.person_name} إلى العراق؟ ستكتمل الدورة وتُنقل للأرشيف.`
-    if (!confirm(msg)) return
-    await supabase.from('visa_cycles').update({ return_date: date, return_time: time }).eq('id', c.id)
-    await logActivity('تسجيل عودة', 'visa', `${c.person_name} — عودة مسجّلة بتاريخ ${date} الساعة ${time}`)
+    if (retDate) {
+      const retMoment = new Date(`${retDate}T${retTime}`).getTime()
+      if (retMoment <= Date.now()) {
+        if (!confirm(`سيتم تسجيل عودة ${c.person_name} إلى العراق الآن — ستكتمل الدورة فوراً وتُنقل للأرشيف. متابعة؟`)) return
+      }
+    }
+
+    const payload: Record<string, string | null> = { departure_date: depDate, departure_time: depTime, departure_notes: depNotes || null }
+    if (retDate) { payload.return_date = retDate; payload.return_time = retTime }
+    await supabase.from('visa_cycles').update(payload).eq('id', c.id)
+    await logActivity('تسجيل مغادرة/عودة', 'visa', `${c.person_name} — مغادرة ${depDate} ${depTime}${retDate ? ` وعودة ${retDate} ${retTime}` : ''}`)
     setStageInputs(prev => ({ ...prev, [c.id]: {} }))
     await loadCycles()
   }
@@ -465,31 +461,31 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     await loadCycles()
   }
 
-  // .is('departure_date', null) يمنع إعادة الكتابة فوق مغادرة مجدولة أُدخلت مسبقاً لأحد الأعضاء
-  // (raw status يبقى 'exit_visa_issued' حتى تصل اللحظة الفعلية، فلا يكفي وحده لاستبعادهم)
-  async function groupRegisterDeparture(gname: string) {
+  // نموذج مغادرة/عودة مدمج للمجموعة — نفس فلسفة الفردي: يظهر بمجرد صدور فيزا المغادرة لأي عضو، ويُطبَّق
+  // التاريخ/الوقت المُدخل على كل عضو مؤهّل لم يُسجَّل له ذلك الحقل بعد. التحديثان متسلسلان (not await) —
+  // تحديث المغادرة يُنفَّذ أولاً ويُثبَّت قبل تحديث العودة، فيلتقط الأخير من دخلت مغادرته للتو بنفس الضغطة
+  async function groupSaveDepartureReturn(gname: string) {
     const si = stageInputs['grp:' + gname] || {}
-    if (!si.depDate) { alert('يرجى تحديد تاريخ المغادرة'); return }
-    const time = si.depTime || nowTimeStr()
-    await supabase.from('visa_cycles').update({ departure_date: si.depDate, departure_time: time, departure_notes: si.depNotes || null })
-      .eq('group_name', gname).eq('status', 'exit_visa_issued').is('departure_date', null)
-    await logActivity('تسجيل مغادرة جماعية', 'visa', `مجموعة ${gname} — مغادرة مسجّلة بتاريخ ${si.depDate} الساعة ${time}`)
-    setStageInputs(prev => ({ ...prev, ['grp:' + gname]: {} }))
-    await loadCycles()
-  }
+    const depDate = si.depDate
+    if (!depDate) { alert('يرجى تحديد تاريخ المغادرة على الأقل'); return }
+    const depTime = si.depTime || nowTimeStr()
+    const retDate = si.retDate
+    const retTime = si.retTime || nowTimeStr()
 
-  async function groupRegisterReturn(gname: string) {
-    const date = stageInputs['grp:' + gname]?.retDate
-    if (!date) { alert('يرجى تحديد تاريخ العودة'); return }
-    const time = stageInputs['grp:' + gname]?.retTime || nowTimeStr()
-    const isFuture = new Date(`${date}T${time}`).getTime() > Date.now()
-    const msg = isFuture
-      ? `سيتم تسجيل موعد عودة مجدول لكل أفراد مجموعة ${gname} بتاريخ ${date} الساعة ${time}. ستكتمل دوراتهم تلقائياً عند وصول هذا الموعد فعلياً.`
-      : `تسجيل عودة كل أفراد مجموعة ${gname}؟ ستكتمل دوراتهم وتُنقل للأرشيف.`
-    if (!confirm(msg)) return
-    await supabase.from('visa_cycles').update({ return_date: date, return_time: time })
-      .eq('group_name', gname).eq('status', 'departed').is('return_date', null)
-    await logActivity('تسجيل عودة جماعية', 'visa', `مجموعة ${gname} — عودة مسجّلة بتاريخ ${date} الساعة ${time}`)
+    if (retDate) {
+      const retMoment = new Date(`${retDate}T${retTime}`).getTime()
+      if (retMoment <= Date.now()) {
+        if (!confirm(`سيتم تسجيل عودة كل أفراد مجموعة ${gname} الآن — ستكتمل دوراتهم فوراً وتُنقل للأرشيف. متابعة؟`)) return
+      }
+    }
+
+    await supabase.from('visa_cycles').update({ departure_date: depDate, departure_time: depTime, departure_notes: si.depNotes || null })
+      .eq('group_name', gname).not('exit_visa_issued_date', 'is', null).is('departure_date', null)
+    if (retDate) {
+      await supabase.from('visa_cycles').update({ return_date: retDate, return_time: retTime })
+        .eq('group_name', gname).not('departure_date', 'is', null).is('return_date', null)
+    }
+    await logActivity('تسجيل مغادرة/عودة جماعية', 'visa', `مجموعة ${gname} — مغادرة ${depDate} ${depTime}${retDate ? ` وعودة ${retDate} ${retTime}` : ''}`)
     setStageInputs(prev => ({ ...prev, ['grp:' + gname]: {} }))
     await loadCycles()
   }
@@ -1780,10 +1776,8 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                   {Object.entries(groupsMap).map(([gname, members]) => {
                     const gsi = stageInputs['grp:' + gname] || {}
                     const anyGrace = members.some(m => m.status === 'grace_period')
-                    // exit_visa_issued فقط ومن دون تاريخ مغادرة مُدخل بعد (وإلا فهي إما مجدولة أو غادرت فعلياً)
-                    const anyExit = members.some(m => m.status === 'exit_visa_issued' && !m.departure_date)
-                    // غادر فعلياً (لا مجرد تاريخ مجدول) ومن دون تاريخ عودة مُدخل بعد
-                    const anyDeparted = members.some(m => computeActualStatus(m) === 'departed' && !m.return_date)
+                    // نموذج المغادرة/العودة المدمج يظهر بمجرد صدور فيزا المغادرة لأي عضو — بلا أي شرط زمني
+                    const anyExitIssued = members.some(m => !!m.exit_visa_issued_date)
                     const anyNoNewVisa = members.some(m => !m.new_visa_obtained)
                     return (
                       <div key={gname} style={{border:'2px solid #0891b2',borderRadius:12,padding:'16px 18px',background:'#f0fdff'}}>
@@ -1824,31 +1818,30 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                 <button onClick={()=>groupRegisterExitVisa(gname)} style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:600}}>فيزا مغادرة للجميع</button>
                               </div>
                             )}
-                            {anyExit && (
-                              <div style={{display:'flex',gap:6,alignItems:'flex-end',flexWrap:'wrap'}}>
-                                <div>
-                                  <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>تاريخ المغادرة (للجميع)</label>
-                                  <input type="date" value={gsi.depDate||''} onChange={e=>updateStageInput('grp:'+gname,'depDate',e.target.value)} style={inputSm}/>
+                            {anyExitIssued && (
+                              <div style={{display:'flex',gap:14,alignItems:'flex-end',flexWrap:'wrap'}}>
+                                <div style={{display:'flex',gap:6,alignItems:'flex-end',flexWrap:'wrap'}}>
+                                  <div>
+                                    <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>تاريخ المغادرة (للجميع)</label>
+                                    <input type="date" value={gsi.depDate||''} onChange={e=>updateStageInput('grp:'+gname,'depDate',e.target.value)} style={inputSm}/>
+                                  </div>
+                                  <div>
+                                    <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>الوقت</label>
+                                    <input type="time" value={gsi.depTime??nowTimeStr()} onChange={e=>updateStageInput('grp:'+gname,'depTime',e.target.value)} style={inputSm}/>
+                                  </div>
+                                  <input value={gsi.depNotes||''} onChange={e=>updateStageInput('grp:'+gname,'depNotes',e.target.value)} placeholder="وجهة/رحلة (اختياري)" style={{...inputSm,width:140}}/>
                                 </div>
-                                <div>
-                                  <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>الوقت</label>
-                                  <input type="time" value={gsi.depTime??nowTimeStr()} onChange={e=>updateStageInput('grp:'+gname,'depTime',e.target.value)} style={inputSm}/>
+                                <div style={{display:'flex',gap:6,alignItems:'flex-end',flexWrap:'wrap'}}>
+                                  <div>
+                                    <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>تاريخ العودة (اختياري الآن، للجميع)</label>
+                                    <input type="date" value={gsi.retDate||''} onChange={e=>updateStageInput('grp:'+gname,'retDate',e.target.value)} style={inputSm}/>
+                                  </div>
+                                  <div>
+                                    <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>الوقت</label>
+                                    <input type="time" value={gsi.retTime??nowTimeStr()} onChange={e=>updateStageInput('grp:'+gname,'retTime',e.target.value)} style={inputSm}/>
+                                  </div>
                                 </div>
-                                <input value={gsi.depNotes||''} onChange={e=>updateStageInput('grp:'+gname,'depNotes',e.target.value)} placeholder="وجهة/رحلة (اختياري)" style={{...inputSm,width:140}}/>
-                                <button onClick={()=>groupRegisterDeparture(gname)} style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:600}}>تسجيل مغادرة الجميع</button>
-                              </div>
-                            )}
-                            {anyDeparted && (
-                              <div style={{display:'flex',gap:6,alignItems:'flex-end',flexWrap:'wrap'}}>
-                                <div>
-                                  <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>تاريخ العودة (للجميع)</label>
-                                  <input type="date" value={gsi.retDate||''} onChange={e=>updateStageInput('grp:'+gname,'retDate',e.target.value)} style={inputSm}/>
-                                </div>
-                                <div>
-                                  <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>الوقت</label>
-                                  <input type="time" value={gsi.retTime??nowTimeStr()} onChange={e=>updateStageInput('grp:'+gname,'retTime',e.target.value)} style={inputSm}/>
-                                </div>
-                                <button onClick={()=>groupRegisterReturn(gname)} style={{background:'#0891b2',color:'#fff',border:'none',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:600}}>تسجيل عودة الجميع</button>
+                                <button onClick={()=>groupSaveDepartureReturn(gname)} style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:600}}>حفظ المغادرة/العودة للجميع</button>
                               </div>
                             )}
                             {anyNoNewVisa && (
@@ -1946,34 +1939,35 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                 <button onClick={()=>registerExitVisa(c)} style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>تسجيل فيزا المغادرة</button>
                               </div>
                             )}
-                            {actual === 'exit_visa_issued' && !c.departure_date && (
-                              <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
-                                <div>
-                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ المغادرة</label>
-                                  <input type="date" value={si.depDate||''} onChange={e=>updateStageInput(c.id,'depDate',e.target.value)} style={inputSm}/>
+                            {/* تظهر بمجرد صدور فيزا المغادرة بلا أي شرط زمني — تتيح إدخال رحلة ذهاب وعودة
+                                محجوزة معاً مسبقاً؛ العودة تبقى اختيارية ويمكن تركها فارغة وإضافتها لاحقاً */}
+                            {!!c.exit_visa_issued_date && (
+                              <div style={{display:'flex',gap:16,alignItems:'flex-end',flexWrap:'wrap'}}>
+                                <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
+                                  <div>
+                                    <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ المغادرة</label>
+                                    <input type="date" value={si.depDate ?? c.departure_date ?? ''} onChange={e=>updateStageInput(c.id,'depDate',e.target.value)} style={inputSm}/>
+                                  </div>
+                                  <div>
+                                    <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>الوقت</label>
+                                    <input type="time" value={si.depTime ?? c.departure_time ?? nowTimeStr()} onChange={e=>updateStageInput(c.id,'depTime',e.target.value)} style={inputSm}/>
+                                  </div>
+                                  <div>
+                                    <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>ملاحظة (وجهة/رحلة، اختياري)</label>
+                                    <input value={si.depNotes ?? c.departure_notes ?? ''} onChange={e=>updateStageInput(c.id,'depNotes',e.target.value)} placeholder="مثال: دبي — FZ374" style={{...inputSm,minWidth:150}}/>
+                                  </div>
                                 </div>
-                                <div>
-                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>الوقت</label>
-                                  <input type="time" value={si.depTime??nowTimeStr()} onChange={e=>updateStageInput(c.id,'depTime',e.target.value)} style={inputSm}/>
+                                <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
+                                  <div>
+                                    <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ العودة (اختياري الآن)</label>
+                                    <input type="date" value={si.retDate ?? c.return_date ?? ''} onChange={e=>updateStageInput(c.id,'retDate',e.target.value)} style={inputSm}/>
+                                  </div>
+                                  <div>
+                                    <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>الوقت</label>
+                                    <input type="time" value={si.retTime ?? c.return_time ?? nowTimeStr()} onChange={e=>updateStageInput(c.id,'retTime',e.target.value)} style={inputSm}/>
+                                  </div>
                                 </div>
-                                <div>
-                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>ملاحظة (وجهة/رحلة، اختياري)</label>
-                                  <input value={si.depNotes||''} onChange={e=>updateStageInput(c.id,'depNotes',e.target.value)} placeholder="مثال: دبي — FZ374" style={{...inputSm,minWidth:170}}/>
-                                </div>
-                                <button onClick={()=>registerDeparture(c)} style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>تسجيل المغادرة</button>
-                              </div>
-                            )}
-                            {actual === 'departed' && !c.return_date && (
-                              <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
-                                <div>
-                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ العودة إلى العراق</label>
-                                  <input type="date" value={si.retDate||''} onChange={e=>updateStageInput(c.id,'retDate',e.target.value)} style={inputSm}/>
-                                </div>
-                                <div>
-                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>الوقت</label>
-                                  <input type="time" value={si.retTime??nowTimeStr()} onChange={e=>updateStageInput(c.id,'retTime',e.target.value)} style={inputSm}/>
-                                </div>
-                                <button onClick={()=>registerReturn(c)} style={{background:'#0891b2',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>تسجيل العودة (إكمال الدورة)</button>
+                                <button onClick={()=>saveDepartureReturn(c)} style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>حفظ بيانات المغادرة/العودة</button>
                               </div>
                             )}
                             {!c.new_visa_obtained && (
