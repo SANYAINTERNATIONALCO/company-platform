@@ -66,19 +66,52 @@ function today() { return new Date().toISOString().split('T')[0] }
 function fmtDate(d: string) { return new Date(d).toLocaleDateString('ar-IQ') }
 function toHHMM(t: string | null): string { return t ? t.slice(0, 5) : '' }
 
-// يحوّل خلية تاريخ/وقت مقروءة كـ JS Date حقيقي (عبر cellDates عند القراءة) لتاريخ ووقت نصّيين —
-// لا يفسّر أي نص يدوياً؛ فقط يستخرج القيم من الكائن الجاهز. يحل مسألة AM/PM تلقائياً لأن مكتبة xlsx تحوّلها بنفسها عند التحليل
-// حرج: يجب استخدام getUTC* لا getHours/getMinutes المحليين — SheetJS يمثّل قيمة الخلية (الخالية من أي منطقة زمنية أصلاً)
-// بكائن Date مبني بدلالة UTC، فاستخدام الدوال المحلية بمتصفح ببغداد (UTC+3) يزيح كل وقت 3 ساعات فعلياً
+// خلية عمود التاريخ/الوقت قد تصل بثلاث صور مختلفة بحسب كيف خزّنها Excel فعلياً للخلية (cellDates:true لا يحوّل
+// إلا الخلايا المهيّأة أصلاً كتاريخ Excel رقمي — ملفات ZKTeco K40 الحقيقية غالباً تخزّنها كنص عادي، فتبقى string)
 function cellToDateTime(cell: unknown): { date: string | null; time: string | null } {
-  if (!(cell instanceof Date) || isNaN(cell.getTime())) return { date: null, time: null }
-  const year = cell.getUTCFullYear()
-  if (year < 1971) return { date: null, time: null } // خلية تاريخ فارغة تُقرأ أحياناً كـ 1899-12-30 (خلل Excel التاريخي)
-  const month = cell.getUTCMonth() + 1
-  const day = cell.getUTCDate()
-  const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-  const time = `${String(cell.getUTCHours()).padStart(2, '0')}:${String(cell.getUTCMinutes()).padStart(2, '0')}:${String(cell.getUTCSeconds()).padStart(2, '0')}`
-  return { date, time }
+  // 1) كائن Date حقيقي (الخلية كانت مهيّأة كتاريخ Excel رقمي وحوّلتها cellDates) —
+  // حرج: getUTC* لا getHours/getMinutes المحليين، لأن SheetJS يمثّل قيمة الخلية (الخالية من أي منطقة زمنية أصلاً)
+  // بكائن Date مبني بدلالة UTC، فاستخدام الدوال المحلية بمتصفح ببغداد (UTC+3) يزيح كل وقت 3 ساعات فعلياً
+  if (cell instanceof Date) {
+    if (isNaN(cell.getTime())) return { date: null, time: null }
+    const year = cell.getUTCFullYear()
+    if (year < 1971) return { date: null, time: null } // خلية تاريخ فارغة تُقرأ أحياناً كـ 1899-12-30 (خلل Excel التاريخي)
+    const month = cell.getUTCMonth() + 1
+    const day = cell.getUTCDate()
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const time = `${String(cell.getUTCHours()).padStart(2, '0')}:${String(cell.getUTCMinutes()).padStart(2, '0')}:${String(cell.getUTCSeconds()).padStart(2, '0')}`
+    return { date, time }
+  }
+
+  // 2) رقم تسلسلي Excel خام (أيام منذ 1899-12-30) — خلية رقمية لم تُهيَّأ بصيغة تاريخ فتجاهلتها cellDates
+  if (typeof cell === 'number' && isFinite(cell)) {
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(cell * 86400000))
+    if (isNaN(d.getTime())) return { date: null, time: null }
+    const year = d.getUTCFullYear()
+    if (year < 1971) return { date: null, time: null }
+    const month = d.getUTCMonth() + 1
+    const day = d.getUTCDate()
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const time = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}:${String(d.getUTCSeconds()).padStart(2, '0')}`
+    return { date, time }
+  }
+
+  // 3) نص — الحالة الفعلية لملف ZKTeco K40 الحقيقي، مثل "7/11/2026 7:29:54 AM" (M/D/YYYY، تنسيق الجهاز الأمريكي).
+  // new Date() القياسي يفهم M/D/YYYY وAM/PM تلقائياً بلا أي تفسير يدوي؛ الناتج بالتوقيت المحلي (لا UTC) لأن النص
+  // لا يحمل منطقة زمنية، فمحرك JS يُنشئ الكائن بدلالة التوقيت المحلي للمتصفح — لذا هنا تحديداً getHours لا getUTCHours
+  if (typeof cell === 'string' && cell.trim()) {
+    const d = new Date(cell.trim())
+    if (isNaN(d.getTime())) return { date: null, time: null }
+    const year = d.getFullYear()
+    if (year < 1971) return { date: null, time: null }
+    const month = d.getMonth() + 1
+    const day = d.getDate()
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+    return { date, time }
+  }
+
+  return { date: null, time: null }
 }
 
 function minutesBetween(a: string | null, b: string | null): number | null {
@@ -181,6 +214,7 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
   const [importReadSample, setImportReadSample] = useState<{ device_user_id: string; record_date: string; time: string }[]>([])
   const [showImportPreview, setShowImportPreview] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [importSkipWarning, setImportSkipWarning] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
 
   const importCounts = useMemo(() => {
@@ -193,9 +227,11 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
     const file = e.target.files?.[0]
     if (!file) return
     setImportError(null)
+    setImportSkipWarning(null)
     try {
       const buf = await file.arrayBuffer()
-      // cellDates يجعل خلايا التاريخ/الوقت تُقرأ كـ JS Date حقيقي بدل نص — يحل AM/PM تلقائياً بلا أي تفسير نصي يدوي
+      // cellDates يحوّل الخلايا المهيّأة أصلاً كتاريخ Excel رقمي إلى JS Date — لا يلمس خلايا نصية أو رقمية عادية،
+      // لذا cellToDateTime يتعامل مع Date/رقم/نص كلها احتياطاً (لا نفترض صورة واحدة فقط لكل ملفات الأجهزة)
       const wb = XLSX.read(buf, { type: 'array', cellDates: true })
       const sheet = wb.Sheets[wb.SheetNames[0]]
       const rows: (string | number | Date)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' })
@@ -210,6 +246,7 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
       interface PunchEntry { device_user_id: string; record_date: string; time: string }
       const entries: PunchEntry[] = []
       const rawNameByDevice: Record<string, string> = {}
+      let skippedRows = 0
 
       for (let r = 1; r < rows.length; r++) {
         const row = rows[r]
@@ -221,10 +258,13 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
           if (rn) rawNameByDevice[device_user_id] = rn
         }
 
+        // فشل صف واحد (صيغة تاريخ/وقت غير مفهومة) لا يُسقط الملف كله — يُتخطى هذا الصف فقط ويُحتسب بالتحذير أدناه
         const { date: record_date, time } = cellToDateTime(row[DATETIME_COL])
-        if (!record_date || !time) continue
+        if (!record_date || !time) { skippedRows++; continue }
         entries.push({ device_user_id, record_date, time })
       }
+
+      if (skippedRows > 0) setImportSkipWarning(`تم تخطي ${skippedRows} صف بسبب صيغة تاريخ/وقت غير مفهومة`)
 
       setImportReadSample(entries.slice(0, 3))
 
@@ -479,6 +519,7 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
                 <input type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleFingerprintFile} />
               </label>
               {importError && <div style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--color-danger)', fontWeight: 'var(--weight-semibold)' }}>{importError}</div>}
+              {importSkipWarning && <div style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--color-warning)', fontWeight: 'var(--weight-semibold)' }}>⚠ {importSkipWarning}</div>}
             </div>
           </Card>
 
