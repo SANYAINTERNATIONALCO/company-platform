@@ -66,45 +66,18 @@ function today() { return new Date().toISOString().split('T')[0] }
 function fmtDate(d: string) { return new Date(d).toLocaleDateString('ar-IQ') }
 function toHHMM(t: string | null): string { return t ? t.slice(0, 5) : '' }
 
-// ينزع لواحق تشويش مثل A7P7 أو A1P1 (ترميز مكسور لاحظناه سابقاً في بعض الملفات) — لا علاقة له بمؤشر AM/PM الحقيقي
-function stripGarbledSuffix(s: string): string {
-  return s.replace(/[AP]\d[AP]\d/gi, '').trim()
-}
-
-// يقرأ خلية تاريخ ووقت مدمجة بصيغة M/D/YYYY H:mm[:ss] [AM/PM] (تنسيق جهاز البصمة) —
-// يحوّل الوقت فوراً لنظام 24 ساعة صريح حسب مؤشر AM/PM (حرج: بدونه يُقرأ المساء أصغر من الصباح، مثلاً "1:45 PM" يبقى "01:45")
-// يرفض تواريخ 1900/epoch وأوقات 0:00 لأنها ناتجة عن فصل عمود التاريخ/الوقت يدوياً بشكل معطوب في إكسل
-function parseDateTimeCell(raw: string): { date: string | null; time: string | null } {
-  const s = stripGarbledSuffix(String(raw || '').trim())
-  if (!s) return { date: null, time: null }
-
-  let date: string | null = null
-  const dm = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
-  if (dm) {
-    const month = parseInt(dm[1], 10), day = parseInt(dm[2], 10), year = parseInt(dm[3], 10)
-    if (year >= 1971 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    }
-  } else {
-    const dm2 = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/)
-    if (dm2) {
-      const year = parseInt(dm2[1], 10)
-      if (year >= 1971) date = `${dm2[1]}-${dm2[2].padStart(2, '0')}-${dm2[3].padStart(2, '0')}`
-    }
-  }
-
-  let time: string | null = null
-  const tm = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp]\.?\s?[Mm]\.?)?/)
-  if (tm) {
-    let h = parseInt(tm[1], 10)
-    const meridiem = tm[4] ? tm[4].replace(/[.\s]/g, '').toUpperCase() : null
-    if (meridiem === 'PM' && h !== 12) h += 12
-    else if (meridiem === 'AM' && h === 12) h = 0
-    if (h <= 23) {
-      const candidate = `${String(h).padStart(2, '0')}:${tm[2]}:${tm[3] || '00'}`
-      if (candidate !== '00:00:00') time = candidate
-    }
-  }
+// يحوّل خلية تاريخ/وقت مقروءة كـ JS Date حقيقي (عبر cellDates عند القراءة) لتاريخ ووقت نصّيين —
+// لا يفسّر أي نص يدوياً؛ فقط يستخرج القيم من الكائن الجاهز. يحل مسألة AM/PM تلقائياً لأن مكتبة xlsx تحوّلها بنفسها عند التحليل
+// حرج: يجب استخدام getUTC* لا getHours/getMinutes المحليين — SheetJS يمثّل قيمة الخلية (الخالية من أي منطقة زمنية أصلاً)
+// بكائن Date مبني بدلالة UTC، فاستخدام الدوال المحلية بمتصفح ببغداد (UTC+3) يزيح كل وقت 3 ساعات فعلياً
+function cellToDateTime(cell: unknown): { date: string | null; time: string | null } {
+  if (!(cell instanceof Date) || isNaN(cell.getTime())) return { date: null, time: null }
+  const year = cell.getUTCFullYear()
+  if (year < 1971) return { date: null, time: null } // خلية تاريخ فارغة تُقرأ أحياناً كـ 1899-12-30 (خلل Excel التاريخي)
+  const month = cell.getUTCMonth() + 1
+  const day = cell.getUTCDate()
+  const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  const time = `${String(cell.getUTCHours()).padStart(2, '0')}:${String(cell.getUTCMinutes()).padStart(2, '0')}:${String(cell.getUTCSeconds()).padStart(2, '0')}`
   return { date, time }
 }
 
@@ -222,9 +195,10 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
     setImportError(null)
     try {
       const buf = await file.arrayBuffer()
-      const wb = XLSX.read(buf, { type: 'array' })
+      // cellDates يجعل خلايا التاريخ/الوقت تُقرأ كـ JS Date حقيقي بدل نص — يحل AM/PM تلقائياً بلا أي تفسير نصي يدوي
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true })
       const sheet = wb.Sheets[wb.SheetNames[0]]
-      const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' })
+      const rows: (string | number | Date)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' })
       if (rows.length < 2) { setImportError('الملف فارغ أو لا يحتوي على بيانات'); e.target.value = ''; return }
 
       // بنية ثابتة بالموضع (لا تُطابق بالاسم إطلاقاً): A=اسم المشروع (يُهمل) B=اسم الموظف (عرض فقط) C=رقم المستخدم (مفتاح الربط) D=تاريخ ووقت مدمج — أي عمود بعد D يُهمل
@@ -247,7 +221,7 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
           if (rn) rawNameByDevice[device_user_id] = rn
         }
 
-        const { date: record_date, time } = parseDateTimeCell(String(row[DATETIME_COL] ?? ''))
+        const { date: record_date, time } = cellToDateTime(row[DATETIME_COL])
         if (!record_date || !time) continue
         entries.push({ device_user_id, record_date, time })
       }
