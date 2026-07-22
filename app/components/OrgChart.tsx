@@ -51,6 +51,14 @@ function initials(name: string): string {
   return parts[0][0] + parts[1][0]
 }
 
+function managesText(count: number): string {
+  if (count === 0) return 'لا يدير أحداً'
+  if (count === 1) return 'يدير موظفاً واحداً'
+  if (count === 2) return 'يدير موظفَين'
+  if (count >= 3 && count <= 10) return `يدير ${count} موظفين`
+  return `يدير ${count} موظف`
+}
+
 const ROOT_KEY = '__root__'
 
 export default function OrgChart({ readOnly = false }: { readOnly?: boolean }) {
@@ -375,7 +383,7 @@ export default function OrgChart({ readOnly = false }: { readOnly?: boolean }) {
 
           <div style={{ marginTop: 'var(--space-4)' }}>
             <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>
-              المرؤوسون المباشرون ({selectedReports.length})
+              {managesText(selectedReports.length)}
             </div>
             {selectedReports.length === 0 ? (
               <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>لا يوجد</div>
@@ -528,7 +536,7 @@ function NodeCard({
       </div>
       <div style={{ marginTop: 6, display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
         {inactive && <Badge tone="neutral" size="sm">غير نشط</Badge>}
-        {hasChildren && <Badge tone="neutral" size="sm">{childCount} مرؤوس</Badge>}
+        {hasChildren && <Badge tone="neutral" size="sm">{managesText(childCount)}</Badge>}
       </div>
 
       <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 4 }}>
