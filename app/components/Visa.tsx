@@ -61,11 +61,15 @@ interface VisaCycle {
   new_visa_obtained: boolean
   new_visa_type: string | null
   new_visa_number: string | null
+  new_visa_duration_days: number | null
   departure_date: string | null
+  departure_time: string | null
   departure_notes: string | null
   return_date: string | null
+  return_time: string | null
   status: string
   notes: string | null
+  tourist_visa_created: boolean
   created_at: string
 }
 
@@ -195,9 +199,49 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   }, [])
 
   // ===== دورات المغادرة والعودة =====
+  // ينشئ سجل التأشيرة الجديدة المرتبط تلقائياً بعد اكتمال الدورة فعلياً — تاريخ الدخول هو تاريخ العودة الفعلي
+  // (لا تاريخ إصدار الفيزا الجديدة). لا رقم فيزا مخصّص بجدولي tourist_visas/annual_visas فيُحفظ ضمن الملاحظات
+  async function performCycleCompletionLink(c: VisaCycle): Promise<boolean> {
+    if (!c.new_visa_obtained || !c.new_visa_type || !c.return_date) return false
+    const notesText = c.new_visa_number ? `ربط تلقائي من دورة مغادرة/عودة — رقم الفيزا: ${c.new_visa_number}` : 'ربط تلقائي من دورة مغادرة/عودة'
+    if (c.new_visa_type === 'سياحية') {
+      await supabase.from('tourist_visas').insert([{
+        full_name: c.person_name, nationality: c.nationality, passport_number: c.passport_number,
+        entry_date: c.return_date, visa_duration: c.new_visa_duration_days || 30, status: 'active', notes: notesText,
+      }])
+    } else if (c.new_visa_type === 'متعددة') {
+      await supabase.from('annual_visas').insert([{
+        full_name: c.person_name, nationality: c.nationality, passport_number: c.passport_number,
+        entry_date: c.return_date, status: 'active', notes: notesText,
+      }])
+    } else {
+      return false
+    }
+    await logActivity('ربط تلقائي بعد العودة', 'visa', `ربط تلقائي: ${c.person_name} عاد للعراق وأُنشئت له تأشيرة ${c.new_visa_type} جديدة`)
+    return true
+  }
+
   async function loadCycles() {
     const { data } = await supabase.from('visa_cycles').select('*').order('created_at', { ascending: false })
-    setCycles((data as VisaCycle[]) || [])
+    const list = (data as VisaCycle[]) || []
+    // فحص دوري (بنفس فلسفة كشف "مخالف" بالتأشيرات) — يكتشف وصول اللحظة الفعلية للمغادرة/العودة ويثبّتها،
+    // وينفّذ الربط التلقائي مرة واحدة فقط لكل دورة (بوابة tourist_visa_created)
+    for (const c of list) {
+      if (c.status === 'completed') continue
+      const actual = computeActualStatus(c)
+      if (actual === 'completed') {
+        if (!c.tourist_visa_created) {
+          const linked = await performCycleCompletionLink(c)
+          await supabase.from('visa_cycles').update({ status: 'completed', tourist_visa_created: linked }).eq('id', c.id)
+        } else {
+          await supabase.from('visa_cycles').update({ status: 'completed' }).eq('id', c.id)
+        }
+      } else if (actual === 'departed' && c.status !== 'departed') {
+        await supabase.from('visa_cycles').update({ status: 'departed' }).eq('id', c.id)
+      }
+    }
+    const { data: updated } = await supabase.from('visa_cycles').select('*').order('created_at', { ascending: false })
+    setCycles((updated as VisaCycle[]) || [])
   }
 
   function cycleDaysInfo(c: VisaCycle) {
@@ -216,13 +260,50 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     return { graceDaysLeft, graceEnd, exitDaysLeft }
   }
 
+  function nowTimeStr(): string {
+    const d = new Date()
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+  function formatTimeHM(t: string | null | undefined): string {
+    return t ? t.slice(0, 5) : ''
+  }
+
+  // الحالة الفعلية للدورة تُحسب دائماً من التواريخ/الأوقات المخزّنة مقارنة باللحظة الحالية — بنفس فلسفة
+  // فترة السماح (cycleDaysInfo) — لا تُكتب "departed"/"completed" مباشرة عند إدخال تاريخ مستقبلي، فقط عند
+  // وصول اللحظة الفعلية تُصبح هذه الدالة تُرجعها (registerExitVisa/فترة السماح لا وقت لهما فيبقيان كما هما)
+  function computeActualStatus(c: VisaCycle): string {
+    if (c.status === 'completed') return 'completed'
+    if (!c.departure_date) return c.status
+    const depMoment = new Date(`${c.departure_date}T${c.departure_time || '00:00:00'}`).getTime()
+    if (depMoment > Date.now()) return 'exit_visa_issued' // مغادرة مجدولة لم تقع بعد
+    if (!c.return_date) return 'departed'
+    const retMoment = new Date(`${c.return_date}T${c.return_time || '00:00:00'}`).getTime()
+    if (retMoment > Date.now()) return 'departed' // عودة مجدولة لم تقع بعد
+    return 'completed'
+  }
+
+  // سطر عرض إضافي لموعد مجدول لم تصل لحظته الفعلية بعد
+  function cycleScheduledNote(c: VisaCycle): string | null {
+    if (c.status === 'completed' || !c.departure_date) return null
+    const depMoment = new Date(`${c.departure_date}T${c.departure_time || '00:00:00'}`).getTime()
+    if (depMoment > Date.now()) return `مغادرة مجدولة: ${formatDateDMY(c.departure_date)} الساعة ${formatTimeHM(c.departure_time)}`
+    if (c.return_date) {
+      const retMoment = new Date(`${c.return_date}T${c.return_time || '00:00:00'}`).getTime()
+      if (retMoment > Date.now()) return `عودة مجدولة: ${formatDateDMY(c.return_date)} الساعة ${formatTimeHM(c.return_time)}`
+    }
+    return null
+  }
+
   function cycleStatusLabel(c: VisaCycle): string {
-    if (c.status === 'completed') return 'مكتملة'
+    const actual = computeActualStatus(c)
+    if (actual === 'completed') return 'مكتملة'
     const info = cycleDaysInfo(c)
-    if (c.status === 'grace_period') return info.graceDaysLeft <= 0 ? `تجاوز فترة السماح (${Math.abs(info.graceDaysLeft)} يوم)` : `فترة سماح (${info.graceDaysLeft} يوم متبقي)`
-    if (c.status === 'exit_visa_issued') return (info.exitDaysLeft !== null && info.exitDaysLeft <= 0) ? 'فيزا المغادرة منتهية' : `فيزا مغادرة صادرة (${info.exitDaysLeft} يوم متبقي)`
-    if (c.status === 'departed') return 'غادر العراق'
-    return c.status
+    const note = cycleScheduledNote(c)
+    const suffix = note ? ` — ${note}` : ''
+    if (actual === 'grace_period') return (info.graceDaysLeft <= 0 ? `تجاوز فترة السماح (${Math.abs(info.graceDaysLeft)} يوم)` : `فترة سماح (${info.graceDaysLeft} يوم متبقي)`) + suffix
+    if (actual === 'exit_visa_issued') return ((info.exitDaysLeft !== null && info.exitDaysLeft <= 0) ? 'فيزا المغادرة منتهية' : `فيزا مغادرة صادرة (${info.exitDaysLeft} يوم متبقي)`) + suffix
+    if (actual === 'departed') return 'غادر العراق' + suffix
+    return actual
   }
 
   async function createCycle() {
@@ -263,7 +344,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     const seen = new Set<string>()
     const dupInBatch = new Set<string>()
     passportsInBatch.forEach(p => { if (seen.has(p)) dupInBatch.add(p); else seen.add(p) })
-    const existingPassports = new Set(cycles.filter(c => c.status !== 'completed').map(c => (c.passport_number || '').trim()).filter(Boolean))
+    const existingPassports = new Set(cycles.filter(c => computeActualStatus(c) !== 'completed').map(c => (c.passport_number || '').trim()).filter(Boolean))
     const dupExisting = Array.from(new Set(passportsInBatch.filter(p => existingPassports.has(p))))
     if (dupInBatch.size > 0 || dupExisting.length > 0) {
       const parts: string[] = []
@@ -303,15 +384,18 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     await loadCycles()
   }
 
+  // لا تُكتب status هنا إطلاقاً — الحالة الفعلية تُحسب دائماً من التاريخ+الوقت عبر computeActualStatus،
+  // وتُثبَّت في DB فقط عند وصول اللحظة الفعلية فعلاً (عبر الفحص الدوري في loadCycles)
   async function registerDeparture(c: VisaCycle) {
     const date = stageInputs[c.id]?.depDate
     if (!date) { alert('يرجى تحديد تاريخ المغادرة'); return }
+    const time = stageInputs[c.id]?.depTime || nowTimeStr()
     await supabase.from('visa_cycles').update({
       departure_date: date,
+      departure_time: time,
       departure_notes: stageInputs[c.id]?.depNotes || null,
-      status: 'departed'
     }).eq('id', c.id)
-    await logActivity('تسجيل مغادرة', 'visa', `${c.person_name} غادر العراق`)
+    await logActivity('تسجيل مغادرة', 'visa', `${c.person_name} — مغادرة مسجّلة بتاريخ ${date} الساعة ${time}`)
     setStageInputs(prev => ({ ...prev, [c.id]: {} }))
     await loadCycles()
   }
@@ -319,19 +403,26 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   async function registerReturn(c: VisaCycle) {
     const date = stageInputs[c.id]?.retDate
     if (!date) { alert('يرجى تحديد تاريخ العودة'); return }
-    if (!confirm(`تسجيل عودة ${c.person_name} إلى العراق؟ ستكتمل الدورة وتُنقل للأرشيف.`)) return
-    await supabase.from('visa_cycles').update({ return_date: date, status: 'completed' }).eq('id', c.id)
-    await logActivity('تسجيل عودة', 'visa', `${c.person_name} عاد إلى العراق — اكتملت الدورة`)
+    const time = stageInputs[c.id]?.retTime || nowTimeStr()
+    const isFuture = new Date(`${date}T${time}`).getTime() > Date.now()
+    const msg = isFuture
+      ? `سيتم تسجيل موعد عودة مجدول لـ ${c.person_name} بتاريخ ${date} الساعة ${time}. ستكتمل الدورة تلقائياً عند وصول هذا الموعد فعلياً.`
+      : `تسجيل عودة ${c.person_name} إلى العراق؟ ستكتمل الدورة وتُنقل للأرشيف.`
+    if (!confirm(msg)) return
+    await supabase.from('visa_cycles').update({ return_date: date, return_time: time }).eq('id', c.id)
+    await logActivity('تسجيل عودة', 'visa', `${c.person_name} — عودة مسجّلة بتاريخ ${date} الساعة ${time}`)
     setStageInputs(prev => ({ ...prev, [c.id]: {} }))
     await loadCycles()
   }
 
   async function saveNewVisaInfo(c: VisaCycle) {
     const inp = stageInputs[c.id] || {}
+    const nvType = inp.nvType || 'سياحية'
     await supabase.from('visa_cycles').update({
       new_visa_obtained: true,
-      new_visa_type: inp.nvType || 'سياحية',
-      new_visa_number: inp.nvNumber || null
+      new_visa_type: nvType,
+      new_visa_number: inp.nvNumber || null,
+      new_visa_duration_days: nvType === 'سياحية' ? (parseInt(inp.nvDuration) || 30) : null,
     }).eq('id', c.id)
     await logActivity('تسجيل حصول على فيزا جديدة', 'visa', `${c.person_name} حصل على الفيزا الجديدة`)
     setStageInputs(prev => ({ ...prev, [c.id]: {} }))
@@ -374,11 +465,15 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     await loadCycles()
   }
 
+  // .is('departure_date', null) يمنع إعادة الكتابة فوق مغادرة مجدولة أُدخلت مسبقاً لأحد الأعضاء
+  // (raw status يبقى 'exit_visa_issued' حتى تصل اللحظة الفعلية، فلا يكفي وحده لاستبعادهم)
   async function groupRegisterDeparture(gname: string) {
     const si = stageInputs['grp:' + gname] || {}
     if (!si.depDate) { alert('يرجى تحديد تاريخ المغادرة'); return }
-    await supabase.from('visa_cycles').update({ departure_date: si.depDate, departure_notes: si.depNotes || null, status: 'departed' }).eq('group_name', gname).eq('status', 'exit_visa_issued')
-    await logActivity('تسجيل مغادرة جماعية', 'visa', `مجموعة ${gname} غادرت العراق`)
+    const time = si.depTime || nowTimeStr()
+    await supabase.from('visa_cycles').update({ departure_date: si.depDate, departure_time: time, departure_notes: si.depNotes || null })
+      .eq('group_name', gname).eq('status', 'exit_visa_issued').is('departure_date', null)
+    await logActivity('تسجيل مغادرة جماعية', 'visa', `مجموعة ${gname} — مغادرة مسجّلة بتاريخ ${si.depDate} الساعة ${time}`)
     setStageInputs(prev => ({ ...prev, ['grp:' + gname]: {} }))
     await loadCycles()
   }
@@ -386,16 +481,27 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   async function groupRegisterReturn(gname: string) {
     const date = stageInputs['grp:' + gname]?.retDate
     if (!date) { alert('يرجى تحديد تاريخ العودة'); return }
-    if (!confirm(`تسجيل عودة كل أفراد مجموعة ${gname}؟ ستكتمل دوراتهم وتُنقل للأرشيف.`)) return
-    await supabase.from('visa_cycles').update({ return_date: date, status: 'completed' }).eq('group_name', gname).eq('status', 'departed')
-    await logActivity('تسجيل عودة جماعية', 'visa', `مجموعة ${gname} عادت إلى العراق`)
+    const time = stageInputs['grp:' + gname]?.retTime || nowTimeStr()
+    const isFuture = new Date(`${date}T${time}`).getTime() > Date.now()
+    const msg = isFuture
+      ? `سيتم تسجيل موعد عودة مجدول لكل أفراد مجموعة ${gname} بتاريخ ${date} الساعة ${time}. ستكتمل دوراتهم تلقائياً عند وصول هذا الموعد فعلياً.`
+      : `تسجيل عودة كل أفراد مجموعة ${gname}؟ ستكتمل دوراتهم وتُنقل للأرشيف.`
+    if (!confirm(msg)) return
+    await supabase.from('visa_cycles').update({ return_date: date, return_time: time })
+      .eq('group_name', gname).eq('status', 'departed').is('return_date', null)
+    await logActivity('تسجيل عودة جماعية', 'visa', `مجموعة ${gname} — عودة مسجّلة بتاريخ ${date} الساعة ${time}`)
     setStageInputs(prev => ({ ...prev, ['grp:' + gname]: {} }))
     await loadCycles()
   }
 
   async function groupSaveNewVisa(gname: string) {
     const si = stageInputs['grp:' + gname] || {}
-    await supabase.from('visa_cycles').update({ new_visa_obtained: true, new_visa_type: si.nvType || 'سياحية' }).eq('group_name', gname).neq('status', 'completed')
+    const nvType = si.nvType || 'سياحية'
+    await supabase.from('visa_cycles').update({
+      new_visa_obtained: true,
+      new_visa_type: nvType,
+      new_visa_duration_days: nvType === 'سياحية' ? (parseInt(si.nvDuration) || 30) : null,
+    }).eq('group_name', gname).neq('status', 'completed')
     await logActivity('تسجيل فيزا جديدة جماعية', 'visa', `مجموعة ${gname} حصلت على الفيزا الجديدة`)
     setStageInputs(prev => ({ ...prev, ['grp:' + gname]: {} }))
     await loadCycles()
@@ -403,7 +509,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
 
   // بدء دورة مباشرة لمخالف من التأشيرات السياحية
   async function startCycleFromTourist(visa: TouristVisa) {
-    const exists = cycles.find(c => c.status !== 'completed' && c.passport_number && c.passport_number === visa.passport_number)
+    const exists = cycles.find(c => computeActualStatus(c) !== 'completed' && c.passport_number && c.passport_number === visa.passport_number)
     if (exists) { alert(`${visa.full_name} لديه دورة نشطة بالفعل`); return }
     if (!confirm(`بدء دورة مغادرة وعودة لـ ${visa.full_name}؟ ستبدأ فترة السماح (60 يوماً) من تاريخ انتهاء فيزته.`)) return
     const natLabel = visa.nationality === 'chinese' ? 'صيني' : visa.nationality === 'pakistani' ? 'باكستاني' : (visa.nationality || 'أخرى')
@@ -623,6 +729,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   function buildCycleRows(list: VisaCycle[]): (string | number)[][] {
     return list.map(c => {
       const info = cycleDaysInfo(c)
+      const actual = computeActualStatus(c)
       const newVisaText = c.new_visa_obtained ? `نعم - ${c.new_visa_type || ''} ${c.new_visa_number || ''}`.trim() : 'لا'
       return [
         c.person_name,
@@ -630,12 +737,12 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
         c.nationality || '',
         c.group_name || '',
         formatDateDMY(c.visa_expired_date),
-        c.status === 'grace_period' ? info.graceDaysLeft : '',
+        actual === 'grace_period' ? info.graceDaysLeft : '',
         c.exit_visa_issued_date ? formatDateDMY(c.exit_visa_issued_date) : '',
-        (c.status === 'exit_visa_issued' && info.exitDaysLeft !== null) ? info.exitDaysLeft : '',
+        (actual === 'exit_visa_issued' && info.exitDaysLeft !== null) ? info.exitDaysLeft : '',
         newVisaText,
-        c.departure_date ? formatDateDMY(c.departure_date) : '',
-        c.return_date ? formatDateDMY(c.return_date) : '',
+        c.departure_date ? `${formatDateDMY(c.departure_date)} ${formatTimeHM(c.departure_time)}`.trim() : '',
+        c.return_date ? `${formatDateDMY(c.return_date)} ${formatTimeHM(c.return_time)}`.trim() : '',
         cycleStatusLabel(c),
       ]
     })
@@ -665,7 +772,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([touristExportHeaders, ...buildTouristRows(touristVisas)]), 'السياحية')
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([annualExportHeaders, ...buildAnnualRows(annualVisas)]), 'السنوية')
-    const cyclesList = cycles.filter(c => cycleView === 'active' ? c.status !== 'completed' : c.status === 'completed')
+    const cyclesList = cycles.filter(c => cycleView === 'active' ? computeActualStatus(c) !== 'completed' : computeActualStatus(c) === 'completed')
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([cycleExportHeaders, ...buildCycleRows(cyclesList)]), cycleView === 'active' ? 'دورات نشطة' : 'دورات مكتملة')
     const statsHeaders = ['الفئة', 'صينيين', 'باكستانيين', 'الإجمالي']
     const statsRows: (string | number)[][] = categories.map(cat => [cat.label, getCount(cat.key, 'chinese'), getCount(cat.key, 'pakistani'), getTotal(cat.key)])
@@ -943,11 +1050,12 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
             boxShadow:activeTab==='cycles'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
           دورات المغادرة والعودة
           {(() => {
-            const activeCycles = cycles.filter(c => c.status !== 'completed')
+            const activeCycles = cycles.filter(c => computeActualStatus(c) !== 'completed')
             const urgent = activeCycles.filter(c => {
               const info = cycleDaysInfo(c)
-              return (c.status === 'grace_period' && info.graceDaysLeft <= 10) ||
-                     (c.status === 'exit_visa_issued' && info.exitDaysLeft !== null && info.exitDaysLeft <= 5)
+              const actual = computeActualStatus(c)
+              return (actual === 'grace_period' && info.graceDaysLeft <= 10) ||
+                     (actual === 'exit_visa_issued' && info.exitDaysLeft !== null && info.exitDaysLeft <= 5)
             }).length
             if (urgent > 0) return (
               <span style={{marginRight:6,background:'#dc2626',color:'#fff',borderRadius:20,padding:'1px 7px',fontSize:11,fontWeight:700}}>
@@ -1277,7 +1385,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                   const exp = new Date(visa.expiry_date); exp.setHours(0,0,0,0)
                                   const t = new Date(); t.setHours(0,0,0,0)
                                   const isViolated = exp.getTime() <= t.getTime() || visa.status === 'violated'
-                                  const hasCycle = cycles.some(c => c.status !== 'completed' && c.passport_number && c.passport_number === visa.passport_number)
+                                  const hasCycle = cycles.some(c => computeActualStatus(c) !== 'completed' && c.passport_number && c.passport_number === visa.passport_number)
                                   if (!isViolated) return null
                                   return hasCycle
                                     ? <span style={{background:'#dbeafe',color:'#1d4ed8',padding:'5px 10px',borderRadius:6,fontSize:11,fontWeight:700}}>في دورة نشطة</span>
@@ -1436,17 +1544,18 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
 
       {/* تبويب دورات المغادرة والعودة */}
       {activeTab === 'cycles' && (() => {
-        const activeCycles = cycles.filter(c => c.status !== 'completed')
-        const completedCycles = cycles.filter(c => c.status === 'completed')
+        const activeCycles = cycles.filter(c => computeActualStatus(c) !== 'completed')
+        const completedCycles = cycles.filter(c => computeActualStatus(c) === 'completed')
         // تنبيهات
         let exceededGrace = 0, graceUrgent = 0, exitUrgent = 0
         activeCycles.forEach(c => {
           const info = cycleDaysInfo(c)
-          if (c.status === 'grace_period') {
+          const actual = computeActualStatus(c)
+          if (actual === 'grace_period') {
             if (info.graceDaysLeft <= 0) exceededGrace++
             else if (info.graceDaysLeft <= 10) graceUrgent++
           }
-          if (c.status === 'exit_visa_issued' && info.exitDaysLeft !== null && info.exitDaysLeft <= 5) exitUrgent++
+          if (actual === 'exit_visa_issued' && info.exitDaysLeft !== null && info.exitDaysLeft <= 5) exitUrgent++
         })
         const shownList = (cycleView === 'active' ? activeCycles : completedCycles).filter(c =>
           !cycleSearch.trim() || c.person_name.toLowerCase().includes(cycleSearch.toLowerCase()) || (c.passport_number || '').toLowerCase().includes(cycleSearch.toLowerCase()) || (c.group_name || '').toLowerCase().includes(cycleSearch.toLowerCase())
@@ -1457,20 +1566,26 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
           if (cycleView === 'active' && c.group_name) { (groupsMap[c.group_name] = groupsMap[c.group_name] || []).push(c) }
           else individualList.push(c)
         })
-        const existingGroups = [...new Set(cycles.filter(x => x.group_name && x.status !== 'completed').map(x => x.group_name!))]
+        const existingGroups = [...new Set(cycles.filter(x => x.group_name && computeActualStatus(x) !== 'completed').map(x => x.group_name!))]
         const cycleStatusBadge = (c: VisaCycle) => {
           const info = cycleDaysInfo(c)
-          if (c.status === 'grace_period') {
+          const actual = computeActualStatus(c)
+          if (actual === 'grace_period') {
             if (info.graceDaysLeft <= 0) return <span style={{background:'#dc2626',color:'#fff',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>تجاوز السماح بـ {Math.abs(info.graceDaysLeft)} يوم!</span>
             return <span style={{background:info.graceDaysLeft<=10?'#fee2e2':'#fef9c3',color:info.graceDaysLeft<=10?'#dc2626':'#b45309',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>سماح: {info.graceDaysLeft} يوم</span>
           }
-          if (c.status === 'exit_visa_issued') {
+          if (actual === 'exit_visa_issued') {
             const d = info.exitDaysLeft
             if (d !== null && d <= 0) return <span style={{background:'#dc2626',color:'#fff',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>فيزا المغادرة منتهية!</span>
             return <span style={{background:(d!==null&&d<=5)?'#fee2e2':'#dbeafe',color:(d!==null&&d<=5)?'#dc2626':'#1d4ed8',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>مغادرة: {d} يوم</span>
           }
-          if (c.status === 'departed') return <span style={{background:'#ede9fe',color:'#7c3aed',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>خارج العراق</span>
+          if (actual === 'departed') return <span style={{background:'#ede9fe',color:'#7c3aed',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>خارج العراق</span>
           return null
+        }
+        const scheduledNoteBadge = (c: VisaCycle) => {
+          const note = cycleScheduledNote(c)
+          if (!note) return null
+          return <span style={{background:'#e0f2fe',color:'#0369a1',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>🕓 {note}</span>
         }
         const stageDot = (done: boolean, label: string, color: string) => (
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flex:1}}>
@@ -1548,7 +1663,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                       <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>المجموعة (اختياري)</label>
                       <input list="cycle-groups" value={cycleForm.group_name} onChange={e=>setCycleForm({...cycleForm,group_name:e.target.value})} placeholder="اسم مجموعة موجودة أو جديدة" style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
                       <datalist id="cycle-groups">
-                        {[...new Set(cycles.filter(x=>x.group_name&&x.status!=='completed').map(x=>x.group_name!))].map(g=><option key={g} value={g}/>)}
+                        {[...new Set(cycles.filter(x=>x.group_name&&computeActualStatus(x)!=='completed').map(x=>x.group_name!))].map(g=><option key={g} value={g}/>)}
                       </datalist>
                     </div>
                   </div>
@@ -1571,7 +1686,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                       <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>اسم المجموعة *</label>
                       <input list="cycle-groups-batch" value={cycleBatchCommon.group_name} onChange={e=>setCycleBatchCommon({...cycleBatchCommon,group_name:e.target.value})} placeholder="اسم مجموعة موجودة أو جديدة" style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
                       <datalist id="cycle-groups-batch">
-                        {[...new Set(cycles.filter(x=>x.group_name&&x.status!=='completed').map(x=>x.group_name!))].map(g=><option key={g} value={g}/>)}
+                        {[...new Set(cycles.filter(x=>x.group_name&&computeActualStatus(x)!=='completed').map(x=>x.group_name!))].map(g=><option key={g} value={g}/>)}
                       </datalist>
                     </div>
                     <div>
@@ -1648,8 +1763,8 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                           <td style={{padding:'9px 12px',color:'#6b7280'}}>{c.nationality||'—'}</td>
                           <td style={{padding:'9px 12px',color:'#6b7280'}}>{new Date(c.visa_expired_date).toLocaleDateString('ar-IQ')}</td>
                           <td style={{padding:'9px 12px',color:'#6b7280'}}>{c.exit_visa_issued_date?new Date(c.exit_visa_issued_date).toLocaleDateString('ar-IQ'):'—'}</td>
-                          <td style={{padding:'9px 12px',color:'#6b7280'}}>{c.departure_date?new Date(c.departure_date).toLocaleDateString('ar-IQ'):'—'}</td>
-                          <td style={{padding:'9px 12px',color:'#15803d',fontWeight:600}}>{c.return_date?new Date(c.return_date).toLocaleDateString('ar-IQ'):'—'}</td>
+                          <td style={{padding:'9px 12px',color:'#6b7280'}}>{c.departure_date?`${new Date(c.departure_date).toLocaleDateString('ar-IQ')} ${formatTimeHM(c.departure_time)}`:'—'}</td>
+                          <td style={{padding:'9px 12px',color:'#15803d',fontWeight:600}}>{c.return_date?`${new Date(c.return_date).toLocaleDateString('ar-IQ')} ${formatTimeHM(c.return_time)}`:'—'}</td>
                           <td style={{padding:'9px 12px'}}>{c.new_visa_obtained?<span style={{background:'#dcfce7',color:'#15803d',padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:700}}>✓ {c.new_visa_type||''} {c.new_visa_number||''}</span>:'—'}</td>
                           <td style={{padding:'9px 12px'}}>
                             {!readOnly && <button onClick={()=>deleteCycle(c)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11}}>حذف</button>}
@@ -1665,8 +1780,10 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                   {Object.entries(groupsMap).map(([gname, members]) => {
                     const gsi = stageInputs['grp:' + gname] || {}
                     const anyGrace = members.some(m => m.status === 'grace_period')
-                    const anyExit = members.some(m => m.status === 'exit_visa_issued')
-                    const anyDeparted = members.some(m => m.status === 'departed')
+                    // exit_visa_issued فقط ومن دون تاريخ مغادرة مُدخل بعد (وإلا فهي إما مجدولة أو غادرت فعلياً)
+                    const anyExit = members.some(m => m.status === 'exit_visa_issued' && !m.departure_date)
+                    // غادر فعلياً (لا مجرد تاريخ مجدول) ومن دون تاريخ عودة مُدخل بعد
+                    const anyDeparted = members.some(m => computeActualStatus(m) === 'departed' && !m.return_date)
                     const anyNoNewVisa = members.some(m => !m.new_visa_obtained)
                     return (
                       <div key={gname} style={{border:'2px solid #0891b2',borderRadius:12,padding:'16px 18px',background:'#f0fdff'}}>
@@ -1684,6 +1801,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                               <span style={{fontSize:11,color:'#6b7280',direction:'ltr'}}>{m.passport_number||''}</span>
                               <span style={{fontSize:11,color:'#9ca3af'}}>{m.nationality||''}</span>
                               {cycleStatusBadge(m)}
+                              {scheduledNoteBadge(m)}
                               {m.new_visa_obtained && <span style={{background:'#dcfce7',color:'#15803d',padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:700}}>✓ فيزا جديدة</span>}
                               {!readOnly && (
                                 <div style={{display:'flex',gap:5,marginRight:'auto'}}>
@@ -1712,21 +1830,29 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                   <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>تاريخ المغادرة (للجميع)</label>
                                   <input type="date" value={gsi.depDate||''} onChange={e=>updateStageInput('grp:'+gname,'depDate',e.target.value)} style={inputSm}/>
                                 </div>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>الوقت</label>
+                                  <input type="time" value={gsi.depTime??nowTimeStr()} onChange={e=>updateStageInput('grp:'+gname,'depTime',e.target.value)} style={inputSm}/>
+                                </div>
                                 <input value={gsi.depNotes||''} onChange={e=>updateStageInput('grp:'+gname,'depNotes',e.target.value)} placeholder="وجهة/رحلة (اختياري)" style={{...inputSm,width:140}}/>
                                 <button onClick={()=>groupRegisterDeparture(gname)} style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:600}}>تسجيل مغادرة الجميع</button>
                               </div>
                             )}
                             {anyDeparted && (
-                              <div style={{display:'flex',gap:6,alignItems:'flex-end'}}>
+                              <div style={{display:'flex',gap:6,alignItems:'flex-end',flexWrap:'wrap'}}>
                                 <div>
                                   <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>تاريخ العودة (للجميع)</label>
                                   <input type="date" value={gsi.retDate||''} onChange={e=>updateStageInput('grp:'+gname,'retDate',e.target.value)} style={inputSm}/>
+                                </div>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>الوقت</label>
+                                  <input type="time" value={gsi.retTime??nowTimeStr()} onChange={e=>updateStageInput('grp:'+gname,'retTime',e.target.value)} style={inputSm}/>
                                 </div>
                                 <button onClick={()=>groupRegisterReturn(gname)} style={{background:'#0891b2',color:'#fff',border:'none',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:600}}>تسجيل عودة الجميع</button>
                               </div>
                             )}
                             {anyNoNewVisa && (
-                              <div style={{display:'flex',gap:6,alignItems:'flex-end',marginRight:'auto'}}>
+                              <div style={{display:'flex',gap:6,alignItems:'flex-end',flexWrap:'wrap',marginRight:'auto'}}>
                                 <div>
                                   <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>نوع الفيزا الجديدة</label>
                                   <select value={gsi.nvType||'سياحية'} onChange={e=>updateStageInput('grp:'+gname,'nvType',e.target.value)} style={inputSm}>
@@ -1734,6 +1860,15 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                     <option value="متعددة">متعددة</option>
                                   </select>
                                 </div>
+                                {(gsi.nvType||'سياحية') === 'سياحية' && (
+                                  <div>
+                                    <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>مدة الفيزا</label>
+                                    <select value={gsi.nvDuration||'30'} onChange={e=>updateStageInput('grp:'+gname,'nvDuration',e.target.value)} style={inputSm}>
+                                      <option value="30">30 يوم</option>
+                                      <option value="60">60 يوم</option>
+                                    </select>
+                                  </div>
+                                )}
                                 <button onClick={()=>groupSaveNewVisa(gname)} style={{background:'#dcfce7',color:'#15803d',border:'1px solid #86efac',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:700}}>✓ الجميع حصلوا على الفيزا</button>
                               </div>
                             )}
@@ -1744,9 +1879,12 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                   })}
                   {individualList.map(c => {
                     const info = cycleDaysInfo(c)
-                    const graceExceeded = c.status === 'grace_period' && info.graceDaysLeft <= 0
+                    const actual = computeActualStatus(c)
+                    const graceExceeded = actual === 'grace_period' && info.graceDaysLeft <= 0
                     const gracePct = Math.max(0, Math.min(100, Math.round(((60 - info.graceDaysLeft) / 60) * 100)))
                     const si = stageInputs[c.id] || {}
+                    const scheduledNote = cycleScheduledNote(c)
+                    const actuallyDeparted = actual === 'departed' || actual === 'completed'
                     return (
                       <div key={c.id} style={{border: graceExceeded ? '2px solid #dc2626' : '1px solid #e5e7eb', borderRadius:12, padding:'16px 18px', background: graceExceeded ? '#fef2f2' : '#fff'}}>
                         {/* رأس البطاقة */}
@@ -1758,23 +1896,24 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                             </div>
                           </div>
                           <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
-                            {c.status === 'grace_period' && (graceExceeded
+                            {actual === 'grace_period' && (graceExceeded
                               ? <span style={{background:'#dc2626',color:'#fff',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>تجاوز فترة السماح بـ {Math.abs(info.graceDaysLeft)} يوم!</span>
                               : <span style={{background:info.graceDaysLeft<=10?'#fee2e2':'#fef9c3',color:info.graceDaysLeft<=10?'#dc2626':'#b45309',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>متبقي {info.graceDaysLeft} يوم من فترة السماح</span>
                             )}
-                            {c.status === 'exit_visa_issued' && info.exitDaysLeft !== null && (
+                            {actual === 'exit_visa_issued' && info.exitDaysLeft !== null && (
                               info.exitDaysLeft <= 0
                                 ? <span style={{background:'#dc2626',color:'#fff',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>فيزا المغادرة منتهية!</span>
                                 : <span style={{background:info.exitDaysLeft<=5?'#fee2e2':'#dbeafe',color:info.exitDaysLeft<=5?'#dc2626':'#1d4ed8',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>{info.exitDaysLeft<=5?'⚠ ':''}متبقي {info.exitDaysLeft} يوم على فيزا المغادرة</span>
                             )}
-                            {c.status === 'departed' && <span style={{background:'#ede9fe',color:'#7c3aed',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>خارج العراق</span>}
+                            {actual === 'departed' && <span style={{background:'#ede9fe',color:'#7c3aed',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>خارج العراق</span>}
+                            {scheduledNote && <span style={{background:'#e0f2fe',color:'#0369a1',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>🕓 {scheduledNote}</span>}
                             {c.new_visa_obtained && <span style={{background:'#dcfce7',color:'#15803d',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>✓ حاصل على الفيزا الجديدة {c.new_visa_type ? `(${c.new_visa_type})` : ''}</span>}
                             {!readOnly && <button onClick={()=>deleteCycle(c)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11}}>حذف</button>}
                           </div>
                         </div>
 
                         {/* شريط فترة السماح */}
-                        {c.status === 'grace_period' && !graceExceeded && (
+                        {actual === 'grace_period' && !graceExceeded && (
                           <div style={{marginBottom:14}}>
                             <div style={{height:8,background:'#e5e7eb',borderRadius:4,overflow:'hidden'}}>
                               <div style={{height:'100%',width:gracePct+'%',background:info.graceDaysLeft<=10?'#dc2626':info.graceDaysLeft<=25?'#eab308':'#15803d',borderRadius:4,transition:'width 0.3s'}}/>
@@ -1782,23 +1921,23 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                           </div>
                         )}
 
-                        {/* الخط الزمني */}
+                        {/* الخط الزمني — "غادر العراق"/"عاد للعراق" تعتمدان اللحظة الفعلية لا مجرد إدخال تاريخ مجدول */}
                         <div style={{display:'flex',alignItems:'flex-start',marginBottom:16,padding:'0 8px'}}>
                           {stageDot(true, 'فترة السماح', '#b45309')}
                           {stageLine(!!c.exit_visa_issued_date)}
                           {stageDot(!!c.exit_visa_issued_date, 'فيزا المغادرة', '#1d4ed8')}
                           {stageLine(c.new_visa_obtained)}
                           {stageDot(c.new_visa_obtained, 'الفيزا الجديدة', '#15803d')}
-                          {stageLine(!!c.departure_date)}
-                          {stageDot(!!c.departure_date, 'غادر العراق', '#7c3aed')}
-                          {stageLine(!!c.return_date)}
-                          {stageDot(!!c.return_date, 'عاد للعراق', '#0891b2')}
+                          {stageLine(actuallyDeparted)}
+                          {stageDot(actuallyDeparted, 'غادر العراق', '#7c3aed')}
+                          {stageLine(actual === 'completed')}
+                          {stageDot(actual === 'completed', 'عاد للعراق', '#0891b2')}
                         </div>
 
                         {/* إجراءات المرحلة الحالية */}
                         {!readOnly && (
                           <div style={{display:'flex',gap:16,flexWrap:'wrap',alignItems:'flex-end',borderTop:'1px solid #f3f4f6',paddingTop:12}}>
-                            {c.status === 'grace_period' && (
+                            {actual === 'grace_period' && (
                               <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
                                 <div>
                                   <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ إصدار فيزا المغادرة</label>
@@ -1807,11 +1946,15 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                 <button onClick={()=>registerExitVisa(c)} style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>تسجيل فيزا المغادرة</button>
                               </div>
                             )}
-                            {c.status === 'exit_visa_issued' && (
+                            {actual === 'exit_visa_issued' && !c.departure_date && (
                               <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
                                 <div>
                                   <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ المغادرة</label>
                                   <input type="date" value={si.depDate||''} onChange={e=>updateStageInput(c.id,'depDate',e.target.value)} style={inputSm}/>
+                                </div>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>الوقت</label>
+                                  <input type="time" value={si.depTime??nowTimeStr()} onChange={e=>updateStageInput(c.id,'depTime',e.target.value)} style={inputSm}/>
                                 </div>
                                 <div>
                                   <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>ملاحظة (وجهة/رحلة، اختياري)</label>
@@ -1820,11 +1963,15 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                 <button onClick={()=>registerDeparture(c)} style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>تسجيل المغادرة</button>
                               </div>
                             )}
-                            {c.status === 'departed' && (
-                              <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
+                            {actual === 'departed' && !c.return_date && (
+                              <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
                                 <div>
                                   <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ العودة إلى العراق</label>
                                   <input type="date" value={si.retDate||''} onChange={e=>updateStageInput(c.id,'retDate',e.target.value)} style={inputSm}/>
+                                </div>
+                                <div>
+                                  <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>الوقت</label>
+                                  <input type="time" value={si.retTime??nowTimeStr()} onChange={e=>updateStageInput(c.id,'retTime',e.target.value)} style={inputSm}/>
                                 </div>
                                 <button onClick={()=>registerReturn(c)} style={{background:'#0891b2',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>تسجيل العودة (إكمال الدورة)</button>
                               </div>
@@ -1838,6 +1985,15 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                     <option value="متعددة">متعددة</option>
                                   </select>
                                 </div>
+                                {(si.nvType||'سياحية') === 'سياحية' && (
+                                  <div>
+                                    <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>مدة الفيزا</label>
+                                    <select value={si.nvDuration||'30'} onChange={e=>updateStageInput(c.id,'nvDuration',e.target.value)} style={inputSm}>
+                                      <option value="30">30 يوم</option>
+                                      <option value="60">60 يوم</option>
+                                    </select>
+                                  </div>
+                                )}
                                 <div>
                                   <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>رقمها (اختياري)</label>
                                   <input value={si.nvNumber||''} onChange={e=>updateStageInput(c.id,'nvNumber',e.target.value)} style={{...inputSm,width:120}}/>
