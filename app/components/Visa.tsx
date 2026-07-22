@@ -282,24 +282,26 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     return 'completed'
   }
 
-  // سطر عرض إضافي لموعد مجدول لم تصل لحظته الفعلية بعد
-  function cycleScheduledNote(c: VisaCycle): string | null {
-    if (c.status === 'completed' || !c.departure_date) return null
+  // سطر عرض لكل موعد مجدول لم تصل لحظته الفعلية بعد — يعيد الاثنين معاً إن وُجدا (رحلة ذهاب وعودة أُدخلتا سويةً)
+  // بدلاً من إعادة أولهما فقط، لأن دخول المغادرة لا يمنع العودة من أن تكون مجدولة أيضاً بنفس اللحظة
+  function cycleScheduledNotes(c: VisaCycle): string[] {
+    if (c.status === 'completed' || !c.departure_date) return []
+    const notes: string[] = []
     const depMoment = new Date(`${c.departure_date}T${c.departure_time || '00:00:00'}`).getTime()
-    if (depMoment > Date.now()) return `مغادرة مجدولة: ${formatDateDMY(c.departure_date)} الساعة ${formatTimeHM(c.departure_time)}`
+    if (depMoment > Date.now()) notes.push(`مغادرة مجدولة: ${formatDateDMY(c.departure_date)} الساعة ${formatTimeHM(c.departure_time)}`)
     if (c.return_date) {
       const retMoment = new Date(`${c.return_date}T${c.return_time || '00:00:00'}`).getTime()
-      if (retMoment > Date.now()) return `عودة مجدولة: ${formatDateDMY(c.return_date)} الساعة ${formatTimeHM(c.return_time)}`
+      if (retMoment > Date.now()) notes.push(`عودة مجدولة: ${formatDateDMY(c.return_date)} الساعة ${formatTimeHM(c.return_time)}`)
     }
-    return null
+    return notes
   }
 
   function cycleStatusLabel(c: VisaCycle): string {
     const actual = computeActualStatus(c)
     if (actual === 'completed') return 'مكتملة'
     const info = cycleDaysInfo(c)
-    const note = cycleScheduledNote(c)
-    const suffix = note ? ` — ${note}` : ''
+    const notes = cycleScheduledNotes(c)
+    const suffix = notes.length > 0 ? ` — ${notes.join(' — ')}` : ''
     if (actual === 'grace_period') return (info.graceDaysLeft <= 0 ? `تجاوز فترة السماح (${Math.abs(info.graceDaysLeft)} يوم)` : `فترة سماح (${info.graceDaysLeft} يوم متبقي)`) + suffix
     if (actual === 'exit_visa_issued') return ((info.exitDaysLeft !== null && info.exitDaysLeft <= 0) ? 'فيزا المغادرة منتهية' : `فيزا مغادرة صادرة (${info.exitDaysLeft} يوم متبقي)`) + suffix
     if (actual === 'departed') return 'غادر العراق' + suffix
@@ -1578,10 +1580,10 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
           if (actual === 'departed') return <span style={{background:'#ede9fe',color:'#7c3aed',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>خارج العراق</span>
           return null
         }
-        const scheduledNoteBadge = (c: VisaCycle) => {
-          const note = cycleScheduledNote(c)
-          if (!note) return null
-          return <span style={{background:'#e0f2fe',color:'#0369a1',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>🕓 {note}</span>
+        const scheduledNoteBadges = (c: VisaCycle) => {
+          const notes = cycleScheduledNotes(c)
+          if (notes.length === 0) return null
+          return <>{notes.map((n, i) => <span key={i} style={{background:'#e0f2fe',color:'#0369a1',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>🕓 {n}</span>)}</>
         }
         const stageDot = (done: boolean, label: string, color: string) => (
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flex:1}}>
@@ -1795,7 +1797,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                               <span style={{fontSize:11,color:'#6b7280',direction:'ltr'}}>{m.passport_number||''}</span>
                               <span style={{fontSize:11,color:'#9ca3af'}}>{m.nationality||''}</span>
                               {cycleStatusBadge(m)}
-                              {scheduledNoteBadge(m)}
+                              {scheduledNoteBadges(m)}
                               {m.new_visa_obtained && <span style={{background:'#dcfce7',color:'#15803d',padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:700}}>✓ فيزا جديدة</span>}
                               {!readOnly && (
                                 <div style={{display:'flex',gap:5,marginRight:'auto'}}>
@@ -1876,7 +1878,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                     const graceExceeded = actual === 'grace_period' && info.graceDaysLeft <= 0
                     const gracePct = Math.max(0, Math.min(100, Math.round(((60 - info.graceDaysLeft) / 60) * 100)))
                     const si = stageInputs[c.id] || {}
-                    const scheduledNote = cycleScheduledNote(c)
+                    const scheduledNotes = cycleScheduledNotes(c)
                     const actuallyDeparted = actual === 'departed' || actual === 'completed'
                     return (
                       <div key={c.id} style={{border: graceExceeded ? '2px solid #dc2626' : '1px solid #e5e7eb', borderRadius:12, padding:'16px 18px', background: graceExceeded ? '#fef2f2' : '#fff'}}>
@@ -1899,11 +1901,19 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                 : <span style={{background:info.exitDaysLeft<=5?'#fee2e2':'#dbeafe',color:info.exitDaysLeft<=5?'#dc2626':'#1d4ed8',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>{info.exitDaysLeft<=5?'⚠ ':''}متبقي {info.exitDaysLeft} يوم على فيزا المغادرة</span>
                             )}
                             {actual === 'departed' && <span style={{background:'#ede9fe',color:'#7c3aed',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>خارج العراق</span>}
-                            {scheduledNote && <span style={{background:'#e0f2fe',color:'#0369a1',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>🕓 {scheduledNote}</span>}
                             {c.new_visa_obtained && <span style={{background:'#dcfce7',color:'#15803d',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>✓ حاصل على الفيزا الجديدة {c.new_visa_type ? `(${c.new_visa_type})` : ''}</span>}
                             {!readOnly && <button onClick={()=>deleteCycle(c)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11}}>حذف</button>}
                           </div>
                         </div>
+
+                        {/* ملاحظات المواعيد المجدولة — تُعرض كلها معاً إن وُجدت (مغادرة وعودة مستقبليتان مُدخلتان سويةً) */}
+                        {scheduledNotes.length > 0 && (
+                          <div style={{marginBottom:14,padding:'8px 12px',background:'#e0f2fe',border:'1px solid #7dd3fc',borderRadius:8,display:'flex',flexDirection:'column',gap:3}}>
+                            {scheduledNotes.map((n, i) => (
+                              <div key={i} style={{fontSize:12,color:'#0369a1',fontWeight:600}}>🕓 {n}</div>
+                            ))}
+                          </div>
+                        )}
 
                         {/* شريط فترة السماح */}
                         {actual === 'grace_period' && !graceExceeded && (
