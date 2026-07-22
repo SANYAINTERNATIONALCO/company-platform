@@ -66,22 +66,13 @@ function today() { return new Date().toISOString().split('T')[0] }
 function fmtDate(d: string) { return new Date(d).toLocaleDateString('ar-IQ') }
 function toHHMM(t: string | null): string { return t ? t.slice(0, 5) : '' }
 
-function normalizeHeaderText(s: string) {
-  return s.replace(/[ً-ٰٟ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
-}
-
-const deviceIdKeywords = ['رقم الجهاز', 'رقم المستخدم', 'user id', 'userid', 'device user', 'emp id', 'employee id', 'enroll', 'pin']
-const checkInKeywords = ['دخول', 'check in', 'check-in', 'checkin', 'clock in', 'clock-in', 'time in', 'in time']
-const checkOutKeywords = ['خروج', 'check out', 'check-out', 'checkout', 'clock out', 'clock-out', 'time out', 'out time']
-const nameKeywords = ['اسم الموظف', 'employee name', 'اسم', 'name']
-const datetimeKeywords = ['تاريخ', 'date', 'وقت', 'time']
-
-// ينزع لواحق تشويش مثل A7P7 أو A1P1 (ترميز عربي مكسور لصباحاً/مساءً) — أوقات جهاز ZKTeco بنظام 24 ساعة أصلاً
+// ينزع لواحق تشويش مثل A7P7 أو A1P1 (ترميز مكسور لاحظناه سابقاً في بعض الملفات) — لا علاقة له بمؤشر AM/PM الحقيقي
 function stripGarbledSuffix(s: string): string {
   return s.replace(/[AP]\d[AP]\d/gi, '').trim()
 }
 
-// يقرأ خلية قد تحتوي تاريخاً و/أو وقتاً بصيغة M/D/YYYY H:mm (تنسيق الجهاز الأمريكي) أو جزءاً منها فقط —
+// يقرأ خلية تاريخ ووقت مدمجة بصيغة M/D/YYYY H:mm[:ss] [AM/PM] (تنسيق جهاز البصمة) —
+// يحوّل الوقت فوراً لنظام 24 ساعة صريح حسب مؤشر AM/PM (حرج: بدونه يُقرأ المساء أصغر من الصباح، مثلاً "1:45 PM" يبقى "01:45")
 // يرفض تواريخ 1900/epoch وأوقات 0:00 لأنها ناتجة عن فصل عمود التاريخ/الوقت يدوياً بشكل معطوب في إكسل
 function parseDateTimeCell(raw: string): { date: string | null; time: string | null } {
   const s = stripGarbledSuffix(String(raw || '').trim())
@@ -103,15 +94,25 @@ function parseDateTimeCell(raw: string): { date: string | null; time: string | n
   }
 
   let time: string | null = null
-  const tm = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+  const tm = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp]\.?\s?[Mm]\.?)?/)
   if (tm) {
-    const h = parseInt(tm[1], 10)
+    let h = parseInt(tm[1], 10)
+    const meridiem = tm[4] ? tm[4].replace(/[.\s]/g, '').toUpperCase() : null
+    if (meridiem === 'PM' && h !== 12) h += 12
+    else if (meridiem === 'AM' && h === 12) h = 0
     if (h <= 23) {
       const candidate = `${String(h).padStart(2, '0')}:${tm[2]}:${tm[3] || '00'}`
       if (candidate !== '00:00:00') time = candidate
     }
   }
   return { date, time }
+}
+
+function minutesBetween(a: string | null, b: string | null): number | null {
+  if (!a || !b) return null
+  const [h1, m1] = a.split(':').map(Number)
+  const [h2, m2] = b.split(':').map(Number)
+  return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2))
 }
 
 function enumerateDates(from: string, to: string): string[] {
@@ -223,67 +224,32 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
       const buf = await file.arrayBuffer()
       const wb = XLSX.read(buf, { type: 'array' })
       const sheet = wb.Sheets[wb.SheetNames[0]]
-      const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '', dateNF: 'yyyy-mm-dd' })
+      const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' })
       if (rows.length < 2) { setImportError('الملف فارغ أو لا يحتوي على بيانات'); e.target.value = ''; return }
 
-      const headers = rows[0].map(h => String(h || ''))
-      let deviceIdIdx: number | undefined
-      let checkInIdx: number | undefined
-      let checkOutIdx: number | undefined
-      let nameIdx: number | undefined
-      const datetimeIndices: number[] = []
-      headers.forEach((h, i) => {
-        const norm = normalizeHeaderText(h)
-        if (deviceIdIdx === undefined && deviceIdKeywords.some(k => norm.includes(k))) { deviceIdIdx = i; return }
-        if (checkInIdx === undefined && checkInKeywords.some(k => norm.includes(k))) { checkInIdx = i; return }
-        if (checkOutIdx === undefined && checkOutKeywords.some(k => norm.includes(k))) { checkOutIdx = i; return }
-        // نستثني "اسم المشروع" كي لا يُؤخذ خطأً كعمود اسم الموظف (الاسم للعرض فقط ولا يُستخدم للربط إطلاقاً)
-        if (nameIdx === undefined && !norm.includes('مشروع') && !norm.includes('project') && nameKeywords.some(k => norm.includes(k))) { nameIdx = i; return }
-        if (datetimeKeywords.some(k => norm.includes(k))) datetimeIndices.push(i)
-      })
-
-      if (deviceIdIdx === undefined) { setImportError('لم يتم العثور على عمود رقم المستخدم في الملف'); e.target.value = ''; return }
-      const hasSummaryFormat = checkInIdx !== undefined || checkOutIdx !== undefined
-      if (!hasSummaryFormat && datetimeIndices.length === 0) {
-        setImportError('لم يتم العثور على عمود التاريخ والوقت في الملف'); e.target.value = ''; return
+      // بنية ثابتة بالموضع (لا تُطابق بالاسم إطلاقاً): A=اسم المشروع (يُهمل) B=اسم الموظف (عرض فقط) C=رقم المستخدم (مفتاح الربط) D=تاريخ ووقت مدمج — أي عمود بعد D يُهمل
+      const NAME_COL = 1, DEVICE_ID_COL = 2, DATETIME_COL = 3
+      if ((rows[0]?.length || 0) <= DATETIME_COL) {
+        setImportError('لم يتم العثور على الأعمدة المتوقعة (من A إلى D) في الملف'); e.target.value = ''; return
       }
 
       interface PunchEntry { device_user_id: string; record_date: string; time: string }
       const entries: PunchEntry[] = []
       const rawNameByDevice: Record<string, string> = {}
-      const dateCandidateIdx = [...datetimeIndices, checkInIdx, checkOutIdx].filter((i): i is number => i !== undefined)
 
       for (let r = 1; r < rows.length; r++) {
         const row = rows[r]
         if (!row || row.every(c => !String(c || '').trim())) continue
-        const device_user_id = String(row[deviceIdIdx] ?? '').trim()
+        const device_user_id = String(row[DEVICE_ID_COL] ?? '').trim()
         if (!device_user_id) continue
-        if (nameIdx !== undefined && !rawNameByDevice[device_user_id]) {
-          const rn = String(row[nameIdx] ?? '').trim()
+        if (!rawNameByDevice[device_user_id]) {
+          const rn = String(row[NAME_COL] ?? '').trim()
           if (rn) rawNameByDevice[device_user_id] = rn
         }
 
-        // نلتقط التاريخ من أول عمود يحمل تاريخاً صالحاً (ليس 1900/epoch) — يدعم حالة فصل عمود التاريخ/الوقت يدوياً بشكل معطوب
-        let record_date: string | null = null
-        for (const ci of dateCandidateIdx) {
-          const { date } = parseDateTimeCell(String(row[ci] ?? ''))
-          if (date) { record_date = date; break }
-        }
-        if (!record_date) continue
-
-        if (hasSummaryFormat) {
-          const ci = checkInIdx !== undefined ? parseDateTimeCell(String(row[checkInIdx] ?? '')).time : null
-          const co = checkOutIdx !== undefined ? parseDateTimeCell(String(row[checkOutIdx] ?? '')).time : null
-          if (ci) entries.push({ device_user_id, record_date, time: ci })
-          if (co) entries.push({ device_user_id, record_date, time: co })
-        } else {
-          let time: string | null = null
-          for (const ci of datetimeIndices) {
-            const { time: t } = parseDateTimeCell(String(row[ci] ?? ''))
-            if (t) { time = t; break }
-          }
-          if (time) entries.push({ device_user_id, record_date, time })
-        }
+        const { date: record_date, time } = parseDateTimeCell(String(row[DATETIME_COL] ?? ''))
+        if (!record_date || !time) continue
+        entries.push({ device_user_id, record_date, time })
       }
 
       setImportReadSample(entries.slice(0, 3))
@@ -389,6 +355,7 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
   const [matchLoading, setMatchLoading] = useState(false)
   const [matchLoaded, setMatchLoaded] = useState(false)
   const [matchDiffOnly, setMatchDiffOnly] = useState(false)
+  const [matchSearch, setMatchSearch] = useState('')
   const [matchSelected, setMatchSelected] = useState<Set<string>>(new Set())
   const [matchApplying, setMatchApplying] = useState(false)
 
@@ -410,8 +377,14 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
         if (!fp && !att) return
         const attPresent = !!att && att.status === 'حاضر'
         let state: MatchRow['state']
-        if (fp && attPresent) state = 'match'
-        else if (fp || attPresent) state = 'mismatch'
+        if (fp && attPresent) {
+          // نطاق ساعة كاملة (60 دقيقة) وليس تطابقاً حرفياً للدقيقة — يُطبَّق على الدخول والخروج معاً
+          const inDiff = minutesBetween(fp.first_punch, att!.check_in)
+          const outDiff = minutesBetween(fp.last_punch, att!.check_out)
+          const inOk = inDiff !== null && inDiff <= 60
+          const outOk = outDiff !== null && outDiff <= 60
+          state = (inOk && outOk) ? 'match' : 'mismatch'
+        } else if (fp || attPresent) state = 'mismatch'
         else state = 'none'
         rows.push({ key: `${emp.id}__${d}`, employee_id: emp.id, employee_name: emp.name, record_date: d, fp, att, state })
       })
@@ -423,7 +396,14 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
     setMatchLoading(false)
   }
 
-  const displayedMatchRows = useMemo(() => matchDiffOnly ? matchRows.filter(r => r.state === 'mismatch') : matchRows, [matchRows, matchDiffOnly])
+  const displayedMatchRows = useMemo(() => {
+    let rows = matchDiffOnly ? matchRows.filter(r => r.state === 'mismatch') : matchRows
+    if (matchSearch.trim()) {
+      const term = matchSearch.trim().toLowerCase()
+      rows = rows.filter(r => r.employee_name.toLowerCase().includes(term))
+    }
+    return rows
+  }, [matchRows, matchDiffOnly, matchSearch])
 
   function toggleMatchSelect(key: string) {
     setMatchSelected(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next })
@@ -655,10 +635,13 @@ export default function Fingerprint({ readOnly = false }: { readOnly?: boolean }
               <div><label style={formLabelStyle}>إلى تاريخ</label><input type="date" value={matchTo} onChange={e => setMatchTo(e.target.value)} style={{ ...formSelectStyle, width: 'auto' }} /></div>
               <Button variant="primary" size="md" onClick={loadMatchComparison} disabled={matchLoading}>{matchLoading ? 'جارٍ التحميل...' : 'عرض المقارنة'}</Button>
               {matchLoaded && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', cursor: 'pointer', marginRight: 'auto' }}>
-                  <input type="checkbox" checked={matchDiffOnly} onChange={e => setMatchDiffOnly(e.target.checked)} />
-                  عرض الاختلافات فقط
-                </label>
+                <>
+                  <Input placeholder="بحث بالاسم..." value={matchSearch} onChange={e => setMatchSearch(e.target.value)} size="sm" style={{ minWidth: 180, width: 'auto' }} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', cursor: 'pointer', marginRight: 'auto' }}>
+                    <input type="checkbox" checked={matchDiffOnly} onChange={e => setMatchDiffOnly(e.target.checked)} />
+                    عرض الاختلافات فقط
+                  </label>
+                </>
               )}
               {!readOnly && matchSelected.size > 0 && (
                 <Button variant="success" size="md" onClick={applySelectedToAttendance} disabled={matchApplying}>
