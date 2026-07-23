@@ -38,6 +38,24 @@ interface TouristVisa {
   created_at: string
 }
 
+interface VisaApplication {
+  id: string
+  person_name: string
+  passport_number: string | null
+  nationality: string | null
+  application_date: string
+  duration_days: number | null
+  status: string
+  visa_number: string | null
+  issue_date: string | null
+  entry_date: string | null
+  tourist_visa_id: string | null
+  linked_cycle_id: string | null
+  rejection_reason: string | null
+  notes: string | null
+  created_at: string
+}
+
 interface AnnualVisa {
   id: string
   full_name: string
@@ -109,7 +127,7 @@ const nationalities = [
 ]
 
 export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
-  const [activeTab, setActiveTab] = useState<'stats' | 'tourist' | 'annual' | 'cycles' | 'batch'>('stats')
+  const [activeTab, setActiveTab] = useState<'stats' | 'applications' | 'tourist' | 'annual' | 'cycles' | 'batch'>('stats')
   const [stats, setStats] = useState<VisaStat[]>([])
   const [files, setFiles] = useState<VisaFile[]>([])
   const [loading, setLoading] = useState(false)
@@ -117,12 +135,33 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   const [editValues, setEditValues] = useState<Record<string, number>>({})
   const [uploading, setUploading] = useState<string | null>(null)
 
+  // ===== طلبات قيد التقديم (visa_applications) =====
+  const [applications, setApplications] = useState<VisaApplication[]>([])
+  const [applicationSubView, setApplicationSubView] = useState<'pending' | 'issued' | 'entered' | 'rejected'>('pending')
+  const [applicationSearch, setApplicationSearch] = useState('')
+  const [showApplicationForm, setShowApplicationForm] = useState(false)
+  const [applicationForm, setApplicationForm] = useState({ person_name: '', passport_number: '', nationality: '', application_date: '', duration_days: '60', notes: '' })
+  const [applicationSaving, setApplicationSaving] = useState(false)
+  const applicationNameRef = useRef<HTMLInputElement>(null)
+  const [appStageInputs, setAppStageInputs] = useState<Record<string, any>>({})
+  function updateAppStageInput(id: string, key: string, value: any) {
+    setAppStageInputs(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [key]: value } }))
+  }
+  // ===== إضافة دفعة طلبات =====
+  const [showApplicationBatchForm, setShowApplicationBatchForm] = useState(false)
+  const [applicationBatchCommon, setApplicationBatchCommon] = useState({ nationality: '', application_date: '', duration_days: '60' })
+  const [applicationBatchRows, setApplicationBatchRows] = useState<BatchRow[]>(Array.from({ length: 10 }, () => ({ full_name: '', passport_number: '' })))
+  const [applicationBatchSaving, setApplicationBatchSaving] = useState(false)
+  const applicationBatchNameRefs = useRef<(HTMLInputElement | null)[]>([])
+  const prevApplicationBatchRowsLen = useRef(applicationBatchRows.length)
+
   // Tourist visa states
   const [touristVisas, setTouristVisas] = useState<TouristVisa[]>([])
   const [showTouristForm, setShowTouristForm] = useState(false)
   const [touristForm, setTouristForm] = useState({ full_name: '', nationality: '', passport_number: '', entry_date: '', visa_duration: '30' })
   const [touristSearch, setTouristSearch] = useState('')
   const [touristSelected, setTouristSelected] = useState<string[]>([])
+  const [touristSortByViolation, setTouristSortByViolation] = useState(false)
 
   // Annual visa states
   const [annualVisas, setAnnualVisas] = useState<AnnualVisa[]>([])
@@ -189,14 +228,145 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   }, [cycleBatchRows.length])
 
   useEffect(() => {
+    if (applicationBatchRows.length > prevApplicationBatchRowsLen.current) {
+      applicationBatchNameRefs.current[prevApplicationBatchRowsLen.current]?.focus()
+    }
+    prevApplicationBatchRowsLen.current = applicationBatchRows.length
+  }, [applicationBatchRows.length])
+
+  useEffect(() => {
     const t = new Date().toISOString().split('T')[0]
     setTodayStr(t)
+    setApplicationForm(prev => ({ ...prev, application_date: t }))
     loadStats()
     loadFiles()
+    loadApplications()
     loadTouristVisas()
     loadAnnualVisas()
     loadCycles()
   }, [])
+
+  // ===== طلبات قيد التقديم (visa_applications) =====
+  async function loadApplications() {
+    const { data } = await supabase.from('visa_applications').select('*').order('created_at', { ascending: false })
+    setApplications((data as VisaApplication[]) || [])
+  }
+
+  async function addApplication() {
+    if (!applicationForm.person_name.trim()) { alert('يرجى تعبئة الاسم'); return }
+    setApplicationSaving(true)
+    const { error } = await supabase.from('visa_applications').insert([{
+      person_name: applicationForm.person_name.trim(),
+      passport_number: applicationForm.passport_number.trim() || null,
+      nationality: applicationForm.nationality.trim() || null,
+      application_date: applicationForm.application_date || todayStr,
+      duration_days: parseInt(applicationForm.duration_days) || 60,
+      status: 'pending',
+      notes: applicationForm.notes.trim() || null,
+    }])
+    if (error) { alert('خطأ: ' + error.message); setApplicationSaving(false); return }
+    await logActivity('تقديم طلب فيزا سياحية', 'visa', `تقديم طلب لـ ${applicationForm.person_name}`)
+    showToast(`تم حفظ: ${applicationForm.person_name}`)
+    setApplicationForm(prev => ({ ...prev, person_name: '', passport_number: '' }))
+    await loadApplications()
+    setApplicationSaving(false)
+    applicationNameRef.current?.focus()
+  }
+
+  function addApplicationBatchRows(n: number) {
+    setApplicationBatchRows(prev => [...prev, ...Array.from({ length: n }, () => ({ full_name: '', passport_number: '' }))])
+  }
+  function updateApplicationBatchRow(idx: number, field: keyof BatchRow, value: string) {
+    setApplicationBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r))
+  }
+
+  async function saveApplicationBatch() {
+    const rowsToSave = applicationBatchRows.filter(r => r.full_name.trim() !== '')
+    if (rowsToSave.length === 0) { alert('لا توجد أسطر معبأة للحفظ'); return }
+    if (!applicationBatchCommon.application_date) { alert('يرجى تحديد تاريخ التقديم للدفعة'); return }
+
+    const passportsInBatch = rowsToSave.map(r => r.passport_number.trim()).filter(Boolean)
+    const seen = new Set<string>()
+    const dupInBatch = new Set<string>()
+    passportsInBatch.forEach(p => { if (seen.has(p)) dupInBatch.add(p); else seen.add(p) })
+    const existingPassports = new Set(applications.filter(a => a.status !== 'rejected').map(a => (a.passport_number || '').trim()).filter(Boolean))
+    const dupExisting = Array.from(new Set(passportsInBatch.filter(p => existingPassports.has(p))))
+    if (dupInBatch.size > 0 || dupExisting.length > 0) {
+      const parts: string[] = []
+      if (dupInBatch.size > 0) parts.push(`مكررة داخل الدفعة: ${Array.from(dupInBatch).join('، ')}`)
+      if (dupExisting.length > 0) parts.push(`موجودة مسبقاً بطلب نشط: ${dupExisting.join('، ')}`)
+      if (!confirm(`تحذير — أرقام جوازات ${parts.join(' | ')}. هل تريد المتابعة بالحفظ؟`)) return
+    }
+
+    setApplicationBatchSaving(true)
+    const payload = rowsToSave.map(r => ({
+      person_name: r.full_name.trim(),
+      passport_number: r.passport_number.trim() || null,
+      nationality: applicationBatchCommon.nationality.trim() || null,
+      application_date: applicationBatchCommon.application_date,
+      duration_days: parseInt(applicationBatchCommon.duration_days) || 60,
+      status: 'pending',
+    }))
+    const { error } = await supabase.from('visa_applications').insert(payload)
+    if (error) { alert('خطأ: ' + error.message); setApplicationBatchSaving(false); return }
+    await logActivity('إضافة دفعة طلبات فيزا سياحية', 'visa', `إضافة ${rowsToSave.length} طلب دفعة واحدة`)
+    setApplicationBatchRows(Array.from({ length: 10 }, () => ({ full_name: '', passport_number: '' })))
+    setApplicationBatchCommon({ nationality: '', application_date: todayStr, duration_days: '60' })
+    setShowApplicationBatchForm(false)
+    setApplicationBatchSaving(false)
+    await loadApplications()
+    setApplicationSubView('pending')
+    alert(`تم إضافة ${rowsToSave.length} طلب`)
+  }
+
+  async function markIssued(app: VisaApplication) {
+    const inp = appStageInputs[app.id] || {}
+    const visaNumber = (inp.visaNumber || '').trim()
+    if (!visaNumber) { alert('يرجى إدخال رقم الفيزا'); return }
+    const issueDate = inp.issueDate || todayStr
+    const duration = parseInt(inp.duration) || app.duration_days || 60
+    await supabase.from('visa_applications').update({
+      status: 'issued', visa_number: visaNumber, issue_date: issueDate, duration_days: duration,
+    }).eq('id', app.id)
+    await logActivity('إصدار فيزا سياحية', 'visa', `صدرت الفيزا لـ ${app.person_name} — رقم ${visaNumber}`)
+    setAppStageInputs(prev => ({ ...prev, [app.id]: {} }))
+    await loadApplications()
+  }
+
+  // يمنع إنشاء أكثر من تأشيرة سياحية واحدة لنفس الطلب حتى لو أُعيد الضغط عدة مرات — بوابة tourist_visa_id
+  async function markEntered(app: VisaApplication) {
+    if (app.tourist_visa_id) { alert('تم إنشاء تأشيرة سياحية لهذا الطلب مسبقاً'); return }
+    const inp = appStageInputs[app.id] || {}
+    const entryDate = inp.entryDate || todayStr
+    const duration = app.duration_days || 60
+    const notesText = app.visa_number ? `من طلب فيزا — رقم الفيزا: ${app.visa_number}` : 'من طلب فيزا سياحية'
+    const { data: inserted, error } = await supabase.from('tourist_visas').insert([{
+      full_name: app.person_name, nationality: app.nationality, passport_number: app.passport_number,
+      entry_date: entryDate, visa_duration: duration, status: 'active', notes: notesText,
+    }]).select().single()
+    if (error) { alert('خطأ: ' + error.message); return }
+    await supabase.from('visa_applications').update({ status: 'entered', entry_date: entryDate, tourist_visa_id: inserted.id }).eq('id', app.id)
+    await logActivity('دخول العراق', 'visa', `دخول العراق: ${app.person_name} — أُنشئت تأشيرة سياحية ${duration} يوماً`)
+    setAppStageInputs(prev => ({ ...prev, [app.id]: {} }))
+    await loadApplications()
+    await loadTouristVisas()
+  }
+
+  async function rejectApplication(app: VisaApplication) {
+    const inp = appStageInputs[app.id] || {}
+    const reason = inp.rejectReason === 'أخرى' ? (inp.rejectReasonOther || '').trim() : (inp.rejectReason || '')
+    if (!reason) { alert('يرجى تحديد سبب الرفض/الإلغاء'); return }
+    if (!confirm(`تأكيد رفض/إلغاء طلب ${app.person_name}؟`)) return
+    await supabase.from('visa_applications').update({ status: 'rejected', rejection_reason: reason }).eq('id', app.id)
+    await logActivity('رفض/إلغاء طلب فيزا', 'visa', `${app.person_name} — السبب: ${reason}`)
+    setAppStageInputs(prev => ({ ...prev, [app.id]: {} }))
+    await loadApplications()
+  }
+
+  async function copyVisaNumber(num: string) {
+    await navigator.clipboard.writeText(num)
+    showToast('تم نسخ رقم الفيزا')
+  }
 
   // ===== دورات المغادرة والعودة =====
   // ينشئ سجل التأشيرة الجديدة المرتبط تلقائياً بعد اكتمال الدورة فعلياً — تاريخ الدخول هو تاريخ العودة الفعلي
@@ -420,7 +590,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
       new_visa_obtained: true,
       new_visa_type: nvType,
       new_visa_number: inp.nvNumber || null,
-      new_visa_duration_days: nvType === 'سياحية' ? (parseInt(inp.nvDuration) || 30) : null,
+      new_visa_duration_days: nvType === 'سياحية' ? (parseInt(inp.nvDuration) || 60) : null,
     }).eq('id', c.id)
     await logActivity('تسجيل حصول على فيزا جديدة', 'visa', `${c.person_name} حصل على الفيزا الجديدة`)
     setStageInputs(prev => ({ ...prev, [c.id]: {} }))
@@ -498,7 +668,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     await supabase.from('visa_cycles').update({
       new_visa_obtained: true,
       new_visa_type: nvType,
-      new_visa_duration_days: nvType === 'سياحية' ? (parseInt(si.nvDuration) || 30) : null,
+      new_visa_duration_days: nvType === 'سياحية' ? (parseInt(si.nvDuration) || 60) : null,
     }).eq('group_name', gname).neq('status', 'completed')
     await logActivity('تسجيل فيزا جديدة جماعية', 'visa', `مجموعة ${gname} حصلت على الفيزا الجديدة`)
     setStageInputs(prev => ({ ...prev, ['grp:' + gname]: {} }))
@@ -569,12 +739,19 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     return Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
   }
 
+  // أيام المخالفة = -getDaysRemaining (نفس صيغة فرق الأيام الكاملة بلا +1، مطابِقة تماماً لصيغة الأيام
+  // المتبقية نفسها لأن الدالتين رياضياً معكوستان لبعض عند تطبيع كلا التاريخين على منتصف الليل)
   function getTouristStatus(visa: TouristVisa) {
-    if (visa.status === 'violated') return { label: 'مخالف', bg: '#fee2e2', color: '#dc2626' }
     const days = getDaysRemaining(visa.expiry_date)
-    if (days <= 0) return { label: 'منتهية', bg: '#fee2e2', color: '#dc2626' }
-    if (days <= 7) return { label: days + ' أيام', bg: '#fef9c3', color: '#b45309' }
-    return { label: days + ' يوم', bg: '#dcfce7', color: '#15803d' }
+    if (days <= 0) {
+      const violatedDays = -days
+      const graceLeft = 60 - violatedDays
+      if (violatedDays > 60) return { label: `تجاوز فترة السماح بـ ${violatedDays - 60} يوماً`, bg: '#fee2e2', color: '#dc2626', violatedDays }
+      if (violatedDays > 30) return { label: `مخالف منذ ${violatedDays} يوم — تبقّى ${graceLeft} يوماً من فترة السماح`, bg: '#ffedd5', color: '#c2410c', violatedDays }
+      return { label: `مخالف منذ ${violatedDays} يوم — تبقّى ${graceLeft} يوماً من فترة السماح`, bg: '#fef9c3', color: '#b45309', violatedDays }
+    }
+    if (days <= 7) return { label: days + ' أيام', bg: '#fef9c3', color: '#b45309', violatedDays: 0 }
+    return { label: days + ' يوم', bg: '#dcfce7', color: '#15803d', violatedDays: 0 }
   }
 
   function getAnnualStatus(visa: AnnualVisa) {
@@ -705,6 +882,36 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
     XLSX.writeFile(workbook, fileName)
+  }
+
+  function applicationStatusLabel(app: VisaApplication): string {
+    if (app.status === 'pending') return 'قيد الانتظار'
+    if (app.status === 'issued') return 'صدرت الفيزا'
+    if (app.status === 'entered') return 'دخل العراق'
+    if (app.status === 'rejected') return 'مرفوض/ملغى'
+    return app.status
+  }
+
+  const applicationExportHeaders = ['الاسم', 'رقم الجواز', 'الجنسية', 'تاريخ التقديم', 'المدة المتوقعة', 'رقم الفيزا', 'تاريخ الإصدار', 'تاريخ الدخول', 'سبب الرفض', 'الحالة', 'ملاحظات']
+  function buildApplicationRows(list: VisaApplication[]): (string | number)[][] {
+    return list.map(a => [
+      a.person_name,
+      a.passport_number || '',
+      a.nationality || '',
+      formatDateDMY(a.application_date),
+      a.duration_days ? `${a.duration_days} يوم` : '',
+      a.visa_number || '',
+      a.issue_date ? formatDateDMY(a.issue_date) : '',
+      a.entry_date ? formatDateDMY(a.entry_date) : '',
+      a.rejection_reason || '',
+      applicationStatusLabel(a),
+      a.notes || '',
+    ])
+  }
+  const applicationSubViewLabels: Record<string, string> = { pending: 'قيد الانتظار', issued: 'صدرت', entered: 'دخلوا العراق', rejected: 'مرفوضة' }
+  function exportApplicationsExcel(list: VisaApplication[], view: string) {
+    const viewLabel = applicationSubViewLabels[view] || view
+    writeSheet(buildApplicationRows(list), applicationExportHeaders, viewLabel, `طلبات_الفيزا_${viewLabel}_${todayStr}.xlsx`)
   }
 
   const touristExportHeaders = ['الاسم', 'رقم الجواز', 'الجنسية', 'تاريخ الدخول', 'المدة', 'تاريخ الانتهاء', 'الأيام المتبقية', 'الحالة']
@@ -969,6 +1176,24 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
 
   const batchFilledCount = useMemo(() => batchRows.filter(r => r.full_name.trim() !== '').length, [batchRows])
   const cycleBatchFilledCount = useMemo(() => cycleBatchRows.filter(r => r.full_name.trim() !== '').length, [cycleBatchRows])
+  const applicationBatchFilledCount = useMemo(() => applicationBatchRows.filter(r => r.full_name.trim() !== '').length, [applicationBatchRows])
+
+  const daysPending = (app: VisaApplication) => -getDaysRemaining(app.application_date)
+
+  const applicationCounts = useMemo(() => ({
+    pending: applications.filter(a => a.status === 'pending').length,
+    issued: applications.filter(a => a.status === 'issued').length,
+    entered: applications.filter(a => a.status === 'entered').length,
+    rejected: applications.filter(a => a.status === 'rejected').length,
+  }), [applications])
+
+  const filteredApplications = useMemo(() => {
+    const term = applicationSearch.toLowerCase().trim()
+    const list = applications.filter(a => a.status === applicationSubView)
+    const searched = term ? list.filter(a => a.person_name.toLowerCase().includes(term) || (a.passport_number || '').toLowerCase().includes(term)) : list
+    if (applicationSubView === 'pending') return [...searched].sort((a, b) => daysPending(b) - daysPending(a))
+    return searched
+  }, [applications, applicationSearch, applicationSubView])
   const batchImportCounts = useMemo(() => {
     const counts = { new: 0, duplicate: 0, incomplete: 0 }
     excelPreview.forEach(r => { counts[r.statusTag]++ })
@@ -976,10 +1201,13 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
   }, [excelPreview])
 
   const filteredTourist = useMemo(() => {
-    if (!touristSearch.trim()) return touristVisas
-    const term = touristSearch.toLowerCase()
-    return touristVisas.filter(v => v.full_name.toLowerCase().includes(term) || (v.passport_number||'').toLowerCase().includes(term))
-  }, [touristVisas, touristSearch])
+    const term = touristSearch.toLowerCase().trim()
+    const list = term
+      ? touristVisas.filter(v => v.full_name.toLowerCase().includes(term) || (v.passport_number||'').toLowerCase().includes(term))
+      : touristVisas
+    if (!touristSortByViolation) return list
+    return [...list].sort((a, b) => getTouristStatus(b).violatedDays - getTouristStatus(a).violatedDays)
+  }, [touristVisas, touristSearch, touristSortByViolation])
 
   const filteredAnnual = useMemo(() => {
     if (!annualSearch.trim()) return annualVisas
@@ -1019,6 +1247,17 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
             background:activeTab==='stats'?'#fff':'transparent',color:activeTab==='stats'?'#1e40af':'#6b7280',
             boxShadow:activeTab==='stats'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
           إحصائيات الأجانب
+        </button>
+        <button onClick={()=>setActiveTab('applications')}
+          style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
+            background:activeTab==='applications'?'#fff':'transparent',color:activeTab==='applications'?'#1e40af':'#6b7280',
+            boxShadow:activeTab==='applications'?'0 1px 3px rgba(0,0,0,0.1)':'none'}}>
+          قيد التقديم
+          {applicationCounts.pending > 0 && (
+            <span style={{marginRight:6,background:'#dbeafe',color:'#1d4ed8',borderRadius:20,padding:'1px 7px',fontSize:11,fontWeight:700}}>
+              {applicationCounts.pending}
+            </span>
+          )}
         </button>
         <button onClick={()=>setActiveTab('tourist')}
           style={{padding:'8px 20px',fontSize:14,border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,
@@ -1247,6 +1486,295 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
         </div>
       )}
 
+      {/* قسم طلبات قيد التقديم */}
+      {activeTab === 'applications' && (() => {
+        const overduePending = applications.filter(a => a.status === 'pending' && daysPending(a) > 30).length
+        const inputSm = { padding:'7px 10px', borderRadius:8, border:'2px solid #d1d5db', fontSize:12, color:'#111827', background:'#fff' }
+        return (
+        <div>
+          {overduePending > 0 && (
+            <div style={{background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:10,padding:'12px 16px',marginBottom:12,display:'flex',alignItems:'center',gap:10}}>
+              <span style={{fontSize:14,fontWeight:600,color:'#dc2626'}}>{overduePending} طلب قيد الانتظار منذ أكثر من 30 يوماً</span>
+            </div>
+          )}
+
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}}>
+            <div style={{background:'#fff',borderRadius:10,padding:'14px 16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',textAlign:'center'}}>
+              <div style={{fontSize:12,color:'#6b7280',fontWeight:600,marginBottom:4}}>قيد الانتظار</div>
+              <div style={{fontSize:26,fontWeight:700,color:'#1d4ed8'}}>{applicationCounts.pending}</div>
+            </div>
+            <div style={{background:'#f0fdff',borderRadius:10,padding:'14px 16px',textAlign:'center'}}>
+              <div style={{fontSize:12,color:'#0891b2',fontWeight:600,marginBottom:4}}>صدرت</div>
+              <div style={{fontSize:26,fontWeight:700,color:'#0891b2'}}>{applicationCounts.issued}</div>
+            </div>
+            <div style={{background:'#dcfce7',borderRadius:10,padding:'14px 16px',textAlign:'center'}}>
+              <div style={{fontSize:12,color:'#15803d',fontWeight:600,marginBottom:4}}>دخلوا العراق</div>
+              <div style={{fontSize:26,fontWeight:700,color:'#15803d'}}>{applicationCounts.entered}</div>
+            </div>
+            <div style={{background:'#fee2e2',borderRadius:10,padding:'14px 16px',textAlign:'center'}}>
+              <div style={{fontSize:12,color:'#dc2626',fontWeight:600,marginBottom:4}}>مرفوضة</div>
+              <div style={{fontSize:26,fontWeight:700,color:'#dc2626'}}>{applicationCounts.rejected}</div>
+            </div>
+          </div>
+
+          <div style={{background:'#fff',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
+            <div style={{padding:'14px 20px',background:'#f9fafb',borderBottom:'2px solid #e5e7eb',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+              <h2 style={{margin:0,fontSize:16,fontWeight:700,color:'#111827'}}>طلبات التأشيرة السياحية قيد التقديم</h2>
+              <div style={{display:'flex',gap:4,background:'#e5e7eb',padding:3,borderRadius:8}}>
+                {(['pending','issued','entered','rejected'] as const).map(v => (
+                  <button key={v} onClick={()=>setApplicationSubView(v)} style={{padding:'5px 14px',fontSize:12,border:'none',borderRadius:6,cursor:'pointer',fontWeight:600,background:applicationSubView===v?'#fff':'transparent',color:applicationSubView===v?'#1e40af':'#6b7280'}}>
+                    {applicationSubViewLabels[v]} ({applicationCounts[v]})
+                  </button>
+                ))}
+              </div>
+              <input placeholder="بحث بالاسم أو رقم الجواز..." value={applicationSearch} onChange={e=>setApplicationSearch(e.target.value)}
+                style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:12,color:'#111827',minWidth:190}}/>
+              <button onClick={()=>exportApplicationsExcel(filteredApplications, applicationSubView)}
+                style={{background:'#eff6ff',color:'#1d4ed8',border:'1px solid #93c5fd',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                ⬇ تصدير Excel
+              </button>
+              {!readOnly && (
+                <div style={{display:'flex',gap:8,marginRight:'auto'}}>
+                  <button onClick={()=>{ setShowApplicationForm(!showApplicationForm); setShowApplicationBatchForm(false) }}
+                    style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                    {showApplicationForm ? 'إلغاء' : '+ إضافة طلب'}
+                  </button>
+                  <button onClick={()=>{ setShowApplicationBatchForm(!showApplicationBatchForm); setShowApplicationForm(false) }}
+                    style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                    {showApplicationBatchForm ? 'إلغاء' : '+ إضافة دفعة'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* نموذج إضافة طلب فردي */}
+            {!readOnly && showApplicationForm && (
+              <div style={{padding:'20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,maxWidth:750}}>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الاسم الكامل *</label>
+                    <input ref={applicationNameRef} autoFocus value={applicationForm.person_name} onChange={e=>setApplicationForm({...applicationForm,person_name:e.target.value})} placeholder="اسم الشخص" style={inputStyle}/></div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>رقم الجواز</label>
+                    <input value={applicationForm.passport_number} onChange={e=>setApplicationForm({...applicationForm,passport_number:e.target.value})}
+                      onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); addApplication() } }}
+                      placeholder="رقم الجواز" style={{...inputStyle,direction:'ltr',textAlign:'right'}}/></div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الجنسية</label>
+                    <input value={applicationForm.nationality} onChange={e=>setApplicationForm({...applicationForm,nationality:e.target.value})} placeholder="مثال: صيني" style={inputStyle}/></div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ التقديم *</label>
+                    <input type="date" value={applicationForm.application_date} onChange={e=>setApplicationForm({...applicationForm,application_date:e.target.value})} style={inputStyle}/></div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>المدة المتوقعة</label>
+                    <select value={applicationForm.duration_days} onChange={e=>setApplicationForm({...applicationForm,duration_days:e.target.value})} style={inputStyle}>
+                      <option value="30">30 يوم</option>
+                      <option value="60">60 يوم</option>
+                    </select>
+                  </div>
+                  <div><label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>ملاحظات</label>
+                    <input value={applicationForm.notes} onChange={e=>setApplicationForm({...applicationForm,notes:e.target.value})} style={inputStyle}/></div>
+                </div>
+                <button onClick={addApplication} disabled={applicationSaving}
+                  style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600}}>
+                  {applicationSaving ? 'جارٍ الحفظ...' : 'حفظ'}
+                </button>
+              </div>
+            )}
+
+            {/* نموذج إضافة دفعة طلبات */}
+            {!readOnly && showApplicationBatchForm && (
+              <div style={{padding:'18px 20px',borderBottom:'2px solid #e5e7eb',background:'#f9fafb'}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:14,maxWidth:700}}>
+                  <div>
+                    <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>الجنسية</label>
+                    <input value={applicationBatchCommon.nationality} onChange={e=>setApplicationBatchCommon({...applicationBatchCommon,nationality:e.target.value})} placeholder="مثال: صيني" style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
+                  </div>
+                  <div>
+                    <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>تاريخ التقديم *</label>
+                    <input type="date" value={applicationBatchCommon.application_date} onChange={e=>setApplicationBatchCommon({...applicationBatchCommon,application_date:e.target.value})} style={{...inputSm,width:'100%',boxSizing:'border-box'}}/>
+                  </div>
+                  <div>
+                    <label style={{display:'block',marginBottom:4,fontSize:12,fontWeight:600,color:'#374151'}}>المدة المتوقعة</label>
+                    <select value={applicationBatchCommon.duration_days} onChange={e=>setApplicationBatchCommon({...applicationBatchCommon,duration_days:e.target.value})} style={{...inputSm,width:'100%',boxSizing:'border-box'}}>
+                      <option value="30">30 يوم</option>
+                      <option value="60">60 يوم</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}}>
+                  <span style={{fontSize:13,fontWeight:700,color:'#7c3aed',background:'#ede9fe',padding:'6px 14px',borderRadius:20}}>
+                    تم تعبئة {applicationBatchFilledCount} من {applicationBatchRows.length} سطر
+                  </span>
+                  <button onClick={()=>addApplicationBatchRows(10)}
+                    style={{background:'#f3f4f6',color:'#374151',border:'1px solid #d1d5db',borderRadius:8,padding:'7px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                    + إضافة 10 أسطر
+                  </button>
+                </div>
+
+                <div style={{overflowX:'auto',border:'1px solid #e5e7eb',borderRadius:10,marginBottom:14}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                    <thead>
+                      <tr style={{background:'#f3f4f6'}}>
+                        <th style={{padding:'8px 12px',borderBottom:'2px solid #e5e7eb',width:40,color:'#6b7280'}}>#</th>
+                        <th style={{padding:'8px 12px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>الاسم</th>
+                        <th style={{padding:'8px 12px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb'}}>رقم الجواز</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {applicationBatchRows.map((row,idx)=>(
+                        <tr key={idx} style={{borderBottom:'1px solid #f3f4f6'}}>
+                          <td style={{padding:'6px 12px',color:'#9ca3af',fontSize:12,textAlign:'center'}}>{idx+1}</td>
+                          <td style={{padding:'6px 8px'}}>
+                            <input ref={el=>{applicationBatchNameRefs.current[idx]=el}} value={row.full_name} onChange={e=>updateApplicationBatchRow(idx,'full_name',e.target.value)}
+                              style={{width:'100%',padding:'7px 10px',borderRadius:6,border:'1px solid #d1d5db',fontSize:13,color:'#111827',boxSizing:'border-box'}}/>
+                          </td>
+                          <td style={{padding:'6px 8px'}}>
+                            <input value={row.passport_number} onChange={e=>updateApplicationBatchRow(idx,'passport_number',e.target.value)}
+                              onKeyDown={e=>{ if(e.key==='Enter' && idx===applicationBatchRows.length-1){ e.preventDefault(); addApplicationBatchRows(1) } }}
+                              style={{width:'100%',padding:'7px 10px',borderRadius:6,border:'1px solid #d1d5db',fontSize:13,color:'#111827',boxSizing:'border-box',direction:'ltr',textAlign:'right'}}/>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <button onClick={saveApplicationBatch} disabled={applicationBatchSaving || applicationBatchFilledCount===0}
+                  style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',cursor:'pointer',fontSize:14,fontWeight:600,opacity:(applicationBatchSaving||applicationBatchFilledCount===0)?0.6:1}}>
+                  {applicationBatchSaving ? 'جارٍ الحفظ...' : `حفظ الكل (${applicationBatchFilledCount})`}
+                </button>
+              </div>
+            )}
+
+            {/* عرض الطلبات */}
+            {filteredApplications.length === 0 ? (
+              <div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>لا توجد طلبات في هذا التبويب</div>
+            ) : applicationSubView === 'entered' || applicationSubView === 'rejected' ? (
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                  <thead>
+                    <tr style={{background:'#f3f4f6'}}>
+                      {(applicationSubView==='entered'
+                        ? ['الاسم','الجواز','الجنسية','رقم الفيزا','تاريخ الدخول','المدة','ملاحظات']
+                        : ['الاسم','الجواز','الجنسية','تاريخ التقديم','سبب الرفض/الإلغاء','ملاحظات']
+                      ).map((h,i)=>(
+                        <th key={i} style={{padding:'10px 12px',textAlign:'right',color:'#374151',fontWeight:700,borderBottom:'2px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredApplications.map(a => (
+                      <tr key={a.id} style={{borderBottom:'1px solid #e5e7eb'}}>
+                        <td style={{padding:'9px 12px',fontWeight:600,color:'#111827'}}>{a.person_name}</td>
+                        <td style={{padding:'9px 12px',color:'#6b7280',direction:'ltr',textAlign:'right'}}>{a.passport_number||'—'}</td>
+                        <td style={{padding:'9px 12px',color:'#6b7280'}}>{a.nationality||'—'}</td>
+                        {applicationSubView === 'entered' ? (
+                          <>
+                            <td style={{padding:'9px 12px',color:'#374151',direction:'ltr',textAlign:'right'}}>{a.visa_number||'—'}</td>
+                            <td style={{padding:'9px 12px',color:'#6b7280'}}>{a.entry_date?new Date(a.entry_date).toLocaleDateString('ar-IQ'):'—'}</td>
+                            <td style={{padding:'9px 12px',color:'#6b7280'}}>{a.duration_days?`${a.duration_days} يوم`:'—'}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td style={{padding:'9px 12px',color:'#6b7280'}}>{new Date(a.application_date).toLocaleDateString('ar-IQ')}</td>
+                            <td style={{padding:'9px 12px',color:'#dc2626'}}>{a.rejection_reason||'—'}</td>
+                          </>
+                        )}
+                        <td style={{padding:'9px 12px',color:'#6b7280'}}>{a.notes||'—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:14}}>
+                {filteredApplications.map(app => {
+                  const inp = appStageInputs[app.id] || {}
+                  const pendDays = daysPending(app)
+                  return (
+                    <div key={app.id} style={{border: (app.status==='pending' && pendDays>30) ? '2px solid #dc2626' : '1px solid #e5e7eb', borderRadius:12, padding:'16px 18px', background: (app.status==='pending' && pendDays>30) ? '#fef2f2' : '#fff'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:12,flexWrap:'wrap'}}>
+                        <div>
+                          <div style={{fontSize:15,fontWeight:700,color:'#111827'}}>{app.person_name}</div>
+                          <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>
+                            {app.nationality || '—'} {app.passport_number && <span style={{direction:'ltr',display:'inline-block'}}>• {app.passport_number}</span>} • تقديم: {new Date(app.application_date).toLocaleDateString('ar-IQ')} {app.duration_days && <>• متوقع {app.duration_days} يوم</>}
+                          </div>
+                          {app.notes && <div style={{fontSize:12,color:'#9ca3af',marginTop:2}}>{app.notes}</div>}
+                        </div>
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+                          {app.status === 'pending' && (
+                            <span style={{background:pendDays>30?'#dc2626':pendDays>14?'#fef9c3':'#dbeafe',color:pendDays>30?'#fff':pendDays>14?'#b45309':'#1d4ed8',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>
+                              {pendDays>30?'⚠ ':''}مقدَّم منذ {pendDays} يوم
+                            </span>
+                          )}
+                          {app.status === 'issued' && app.visa_number && (
+                            <span style={{display:'flex',alignItems:'center',gap:4,background:'#e0f2fe',color:'#0369a1',padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700}}>
+                              رقم الفيزا: {app.visa_number}
+                              {!readOnly && <button onClick={()=>copyVisaNumber(app.visa_number!)} title="نسخ" style={{background:'none',border:'none',cursor:'pointer',fontSize:12,padding:0,color:'#0369a1'}}>📋</button>}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {!readOnly && (
+                        <div style={{display:'flex',gap:16,flexWrap:'wrap',alignItems:'flex-end',borderTop:'1px solid #f3f4f6',paddingTop:12}}>
+                          {app.status === 'pending' && (
+                            <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
+                              <div>
+                                <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>رقم الفيزا</label>
+                                <input value={inp.visaNumber||''} onChange={e=>updateAppStageInput(app.id,'visaNumber',e.target.value)} style={{...inputSm,direction:'ltr',textAlign:'right'}}/>
+                              </div>
+                              <div>
+                                <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ الإصدار</label>
+                                <input type="date" value={inp.issueDate??todayStr} onChange={e=>updateAppStageInput(app.id,'issueDate',e.target.value)} style={inputSm}/>
+                              </div>
+                              <div>
+                                <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تأكيد المدة</label>
+                                <select value={inp.duration??String(app.duration_days||60)} onChange={e=>updateAppStageInput(app.id,'duration',e.target.value)} style={inputSm}>
+                                  <option value="30">30 يوم</option>
+                                  <option value="60">60 يوم</option>
+                                </select>
+                              </div>
+                              <button onClick={()=>markIssued(app)} style={{background:'#1e40af',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>تم الإصدار</button>
+                            </div>
+                          )}
+                          {app.status === 'issued' && (
+                            <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
+                              <div>
+                                <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>تاريخ الدخول</label>
+                                <input type="date" value={inp.entryDate??todayStr} onChange={e=>updateAppStageInput(app.id,'entryDate',e.target.value)} style={inputSm}/>
+                              </div>
+                              <button onClick={()=>markEntered(app)} style={{background:'#16a34a',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:12,fontWeight:600}}>دخل العراق</button>
+                            </div>
+                          )}
+                          <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap',marginRight:'auto'}}>
+                            <div>
+                              <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>سبب الرفض/الإلغاء</label>
+                              <select value={inp.rejectReason||''} onChange={e=>updateAppStageInput(app.id,'rejectReason',e.target.value)} style={inputSm}>
+                                <option value="">اختر السبب...</option>
+                                <option value="رُفض من الجهة المختصة">رُفض من الجهة المختصة</option>
+                                <option value="أُلغي الطلب">أُلغي الطلب</option>
+                                <option value="لم يعد مطلوباً">لم يعد مطلوباً</option>
+                                <option value="أخرى">أخرى</option>
+                              </select>
+                            </div>
+                            {inp.rejectReason === 'أخرى' && (
+                              <div>
+                                <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>وضّح السبب</label>
+                                <input value={inp.rejectReasonOther||''} onChange={e=>updateAppStageInput(app.id,'rejectReasonOther',e.target.value)} style={inputSm}/>
+                              </div>
+                            )}
+                            <button onClick={()=>rejectApplication(app)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:12,fontWeight:700}}>رفض/إلغاء</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+        )
+      })()}
+
       {/* قسم التأشيرات السياحية */}
       {activeTab === 'tourist' && (
         <div>
@@ -1282,6 +1810,10 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
               <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                 <input placeholder="بحث بالاسم أو رقم الجواز..." value={touristSearch} onChange={e=>setTouristSearch(e.target.value)}
                   style={{padding:'8px 12px',borderRadius:8,border:'2px solid #d1d5db',fontSize:13,color:'#111827',minWidth:200}}/>
+                <button onClick={()=>setTouristSortByViolation(v=>!v)}
+                  style={{background:touristSortByViolation?'#1e40af':'#fff',color:touristSortByViolation?'#fff':'#374151',border:'1px solid #d1d5db',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  ↓ الأكثر تأخراً أولاً
+                </button>
                 <button onClick={exportTouristExcel}
                   style={{background:'#eff6ff',color:'#1d4ed8',border:'1px solid #93c5fd',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontSize:13,fontWeight:600}}>
                   ⬇ تصدير Excel
@@ -1858,7 +2390,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                 {(gsi.nvType||'سياحية') === 'سياحية' && (
                                   <div>
                                     <label style={{display:'block',marginBottom:3,fontSize:10,fontWeight:600,color:'#374151'}}>مدة الفيزا</label>
-                                    <select value={gsi.nvDuration||'30'} onChange={e=>updateStageInput('grp:'+gname,'nvDuration',e.target.value)} style={inputSm}>
+                                    <select value={gsi.nvDuration||'60'} onChange={e=>updateStageInput('grp:'+gname,'nvDuration',e.target.value)} style={inputSm}>
                                       <option value="30">30 يوم</option>
                                       <option value="60">60 يوم</option>
                                     </select>
@@ -1992,7 +2524,7 @@ export default function Visa({ readOnly = false }: { readOnly?: boolean }) {
                                 {(si.nvType||'سياحية') === 'سياحية' && (
                                   <div>
                                     <label style={{display:'block',marginBottom:3,fontSize:11,fontWeight:600,color:'#374151'}}>مدة الفيزا</label>
-                                    <select value={si.nvDuration||'30'} onChange={e=>updateStageInput(c.id,'nvDuration',e.target.value)} style={inputSm}>
+                                    <select value={si.nvDuration||'60'} onChange={e=>updateStageInput(c.id,'nvDuration',e.target.value)} style={inputSm}>
                                       <option value="30">30 يوم</option>
                                       <option value="60">60 يوم</option>
                                     </select>
